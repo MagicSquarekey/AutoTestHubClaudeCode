@@ -1,10 +1,12 @@
-# AI 项目模板
+# AutoTest Hub
 
-AI 项目模板 — 通用的 AI 辅助开发项目起点。
+AutoTest Hub — Windows 开箱即用的单人专属自动化测试工具。
 
 ## 技术栈
 
-Python 3.10+ / Git
+- **后端**：Python 3.11+ / FastAPI / SQLAlchemy / SQLite
+- **前端**：Vue 3 / Element Plus / Electron
+- **自动化**：Playwright / Appium / PaddleOCR
 
 ## 代码规范
 
