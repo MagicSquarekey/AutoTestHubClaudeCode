@@ -1,234 +1,237 @@
-# AI 项目模板 / AI Project Template
+# AutoTest Hub 单人落地版
 
-🤖 一个通用的 AI 辅助开发项目起点 / A universal template for AI-assisted development
+🤖 一款 Windows 开箱即用的单人专属自动化测试工具
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Vue 3](https://img.shields.io/badge/vue-3-brightgreen.svg)](https://vuejs.org/)
 
 ---
 
-## 🚀 快速开始 / Quick Start
+## 📋 项目概述
 
-### 方式一：使用 Makefile（推荐）
+AutoTest Hub 是一款面向单人测试工程师的自动化测试工具，支持 Web、Android、iOS、微信小程序等多端测试，提供可视化低代码用例编排、全局元素管理、统一执行引擎、测试报告分析、AI 辅助修复等核心能力。
 
-```bash
-# 1. 克隆模板 / Clone template
-git clone https://github.com/MagicSquarekey/AI-XiangMuMoBan.git
-cd AI-XiangMuMoBan
+### 核心特性
 
-# 2. 创建新项目 / Create new project
-make new-project
-
-# 3. 按提示输入项目名称，然后进入项目
-cd 我的项目名
-make setup
-```
-
-### 方式二：使用 Python 脚本
-
-```bash
-# 1. 克隆模板 / Clone template
-git clone https://github.com/MagicSquarekey/AI-XiangMuMoBan.git
-cd AI-XiangMuMoBan
-
-# 2. 创建新项目 / Create new project
-python utils/create_project.py 我的项目名
-
-# 3. 进入项目 / Enter project
-cd 我的项目名
-make setup
-```
+- 🎯 **低代码编排**：拖拽式可视化用例编辑，无需编写代码
+- 🔄 **多端统一**：一套工具覆盖 Web、Android、iOS、小程序
+- 🧠 **智能定位**：多定位符融合降级，元素定位成功率 ≥ 98%
+- 📊 **报告分析**：多维度测试结果分析与缺陷取证
+- 🤖 **AI 辅助**：自然语言生成用例、智能修复、失败分析
 
 ---
 
-## 📁 目录结构 / Directory Structure
+## 🚀 快速开始
 
-```
-AI-XiangMuMoBan/
-├── .claude/             # Claude 配置（自动生效）
-│   ├── commands/        # 快捷命令
-│   └── skills/          # 技能定义
-├── config/              # 项目配置
-│   └── settings.yaml    # 通用设置
-├── utils/               # 工具脚本
-│   ├── create_project.py    # 创建新项目
-│   └── update_directory.py  # 更新目录结构
-├── templates/           # 模板文件
-├── docs/                # 文档
-├── private/             # 🔒 私有部分（不上传到 GitHub）
-│   └── (项目特定文件)
-├── README.md            # 项目说明（本文件）
-├── CLAUDE.md            # AI 指令
-├── Makefile             # 常用命令
-├── requirements.txt     # Python 依赖
-└── .gitignore           # Git 忽略规则
-```
+### 环境要求
 
----
+- **操作系统**：Windows 10 1903+ / Windows 11
+- **Python**：3.11+
+- **Node.js**：16+
+- **硬件**：CPU i5+ / 内存 8GB+ / 硬盘 20GB+
 
-## 🔧 Makefile 使用教程
-
-Makefile 是一个命令行工具，可以让你用简单的命令执行复杂的操作。
-
-### 常用命令
-
-| 命令 | 说明 | 使用场景 |
-|------|------|----------|
-| `make help` | 显示所有可用命令 | 不知道有什么命令时 |
-| `make setup` | 初始化项目 | 首次进入项目时 |
-| `make clean` | 清理临时文件 | 项目变慢或有垃圾文件时 |
-| `make new-project` | 创建新项目 | 需要新建项目时 |
-
-### 使用步骤
-
-#### 1. 首次进入项目
+### 方式一：源码运行（开发调试）
 
 ```bash
-cd 我的项目名
-make setup
+# 1. 克隆项目
+git clone https://github.com/your-username/AutoTestHub.git
+cd AutoTestHub
+
+# 2. 安装后端依赖
+cd backend
+pip install -r requirements.txt
+
+# 3. 启动后端服务
+python main.py
+
+# 4. 新终端，安装前端依赖
+cd frontend
+npm install
+
+# 5. 启动前端开发服务
+npm run dev
 ```
 
-这会：
-- 安装 Python 依赖（requirements.txt）
-- 显示"项目初始化完成！"
-
-#### 2. 查看可用命令
+### 方式二：Electron 桌面应用
 
 ```bash
-make help
+# 安装依赖后
+cd frontend
+npm run electron:dev
 ```
 
-会显示：
-```
-可用命令：
-clean           清理临时文件
-help            显示帮助信息
-new-project     创建新项目
-setup           初始化项目
-```
-
-#### 3. 清理项目
+### 方式三：打包安装包
 
 ```bash
-make clean
-```
-
-会删除：
-- `__pycache__/` 目录
-- `.pytest_cache/` 目录
-- `htmlcov/` 目录
-- `.coverage` 文件
-- `reports/` 目录
-
-#### 4. 创建新项目
-
-```bash
-make new-project
-```
-
-会启动项目创建向导，按提示输入项目名称即可。
-
-### 常见问题
-
-**Q: 提示 "make: command not found" 怎么办？**
-
-A: Windows 用户需要安装 Make：
-- 方法1：使用 Git Bash（自带 make）
-- 方法2：使用 `python utils/create_project.py` 代替
-
-**Q: 提示 "No rule to make target 'xxx'" 怎么办？**
-
-A: 说明命令不存在，运行 `make help` 查看可用命令。
-
-**Q: 可以自定义 Makefile 命令吗？**
-
-A: 可以！编辑 Makefile 文件，按照格式添加：
-```makefile
-my-command: ## 我的命令说明
-    要执行的命令
+cd frontend
+npm run electron:build
 ```
 
 ---
 
-## 🎯 快捷命令 / Quick Commands
+## 📁 项目结构
 
-在 Claude Code 中使用这些命令：
-
-| 命令 | 用途 | Command |
-|------|------|---------|
-| `/plan` | 任务规划 | Task planning |
-| `/review` | 代码审查 | Code review |
-| `/fix` | 修复问题 | Bug fixing |
-| `/commit` | 提交代码 | Smart commit |
-| `/docs` | 文档同步 | Document sync |
-| `/status` | 查看状态 | Project status |
-
----
-
-## 📖 使用方法 / Usage
-
-### 创建新项目
-
-```bash
-# 方式1：使用 Makefile
-make new-project
-
-# 方式2：使用 Python
-python utils/create_project.py 项目名称
 ```
-
-### 开始开发
-
-```bash
-cd 项目名称
-make setup
-
-# 开始使用 Claude Code 开发
-# 输入 /plan 开始任务规划
-```
-
-### 私有文件管理
-
-将不想上传到 GitHub 的文件放在 `private/` 目录：
-
-```bash
-# 例如：项目文档、笔记、敏感配置等
-private/
-├── docs/           # 项目文档
-├── notes/          # 个人笔记
-└── secrets.yaml    # 敏感配置
+AutoTestHub/
+├── frontend/                    # 前端 Electron + Vue3 项目
+│   ├── src/
+│   │   ├── views/              # 页面组件
+│   │   ├── components/         # 公共组件
+│   │   ├── store/              # Pinia 状态管理
+│   │   ├── api/                # 接口调用
+│   │   ├── router/             # 路由配置
+│   │   ├── layouts/            # 布局组件
+│   │   └── utils/              # 工具函数
+│   ├── electron/               # Electron 主进程
+│   ├── package.json
+│   └── vite.config.js
+├── backend/                    # 后端 Python 服务
+│   ├── app/
+│   │   ├── api/               # 接口层
+│   │   │   ├── endpoints/     # API 端点
+│   │   │   └── router.py      # 路由注册
+│   │   ├── service/           # 业务逻辑层
+│   │   ├── engine/            # 执行引擎核心
+│   │   ├── driver/            # 各端驱动封装
+│   │   ├── models/            # 数据模型
+│   │   ├── core/              # 核心配置
+│   │   └── utils/             # 工具类
+│   ├── plugins/               # 插件扩展
+│   │   └── keywords/          # 自定义关键字
+│   ├── data/                  # 本地数据存储
+│   ├── logs/                  # 日志文件
+│   ├── main.py                # 服务入口
+│   ├── requirements.txt
+│   └── .env.example
+├── docs/                      # 文档
+├── private/                   # 私有文件（不提交到 GitHub）
+├── .gitignore
+├── CLAUDE.md
+└── README.md
 ```
 
 ---
 
-## 🔒 安全规范 / Security
+## 🔧 技术栈
 
-### 绝对禁止 / Never Do
+| 层级 | 技术选型 | 说明 |
+|------|----------|------|
+| 桌面客户端 | Electron + Vue3 + Element Plus | 前端生态成熟，Windows 适配好 |
+| 执行内核 | Python 3.11 + FastAPI | 自动化生态完善，开发效率高 |
+| 本地存储 | SQLite | 文件级数据库，无需安装服务 |
+| Web 驱动 | Playwright | 自动管理浏览器驱动，稳定性好 |
+| Android 驱动 | Appium + uiautomator2 | 开源成熟，兼容性好 |
+| iOS 驱动 | tidevice + WDA | Windows 原生直连 iOS |
+| 小程序驱动 | miniprogram-automator | 官方原生接口 |
+| OCR / 图像 | PaddleOCR + OpenCV | 开源免费，中文识别准确 |
+
+---
+
+## 📖 功能模块
+
+### 1. 用例管理
+- 用例 CRUD、分组、标签、搜索
+- JSON 格式导入导出
+- 版本历史与回滚
+
+### 2. 可视化编排
+- 拖拽关键字到画布
+- 条件分支、循环执行
+- 数据驱动与参数化
+- 单步调试、断点执行
+
+### 3. 元素管理
+- 多端定位符绑定
+- 智能定位降级
+- 元素健康巡检
+- 批量同步
+
+### 4. 执行引擎
+- 统一执行内核
+- 智能等待机制
+- 异常自动处理
+- 多任务并行
+
+### 5. 测试报告
+- 总览报告
+- 步骤级详情
+- 失败自动分类
+- 趋势分析
+
+### 6. 任务调度
+- Cron 定时执行
+- 用例集管理
+- 消息通知（飞书/企微/邮件）
+
+### 7. AI 辅助
+- 自然语言生成用例
+- 元素智能修复
+- 失败根因分析
+
+---
+
+## 🔌 API 接口
+
+后端服务启动后，默认在 `http://127.0.0.1:8686` 提供 HTTP 接口。
+
+### 核心接口
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/case/list` | GET | 获取用例列表 |
+| `/api/case/create` | POST | 创建用例 |
+| `/api/element/list` | GET | 获取元素列表 |
+| `/api/exec/run` | POST | 执行用例 |
+| `/api/exec/status/{task_id}` | GET | 查询任务状态 |
+| `/api/report/list` | GET | 获取报告列表 |
+| `/api/device/list` | GET | 获取设备列表 |
+| `/api/scheduler/suites` | GET | 获取用例集 |
+| `/api/system/configs` | GET | 获取系统配置 |
+
+---
+
+## 🔒 安全规范
+
+### 绝对禁止
 
 - ❌ 不得提交 API Key、密码、密钥
 - ❌ 不得提交 .env 文件
 - ❌ 不得在代码中硬编码任何凭证
+- ❌ 不得提交测试账号、密码、自动化操作细节
 
-### 发现安全问题时 / When发现安全问题
+### 敏感信息处理
 
-1. 立即停止提交
-2. 告知用户
-3. 清理 Git 历史（如已提交）
-
----
-
-## 📚 更多信息 / More Info
-
-- [CLAUDE.md](CLAUDE.md) - AI 指令 / AI Instructions
-- [docs/shi_yong_shou_ce.md](docs/shi_yong_shou_ce.md) - 使用手册 / User Manual
+- 使用 `.env` 文件存储敏感配置
+- `.gitignore` 已排除敏感文件
+- 提供 `.env.example` 模板文件
+- 敏感数据使用 AES 加密存储
 
 ---
 
-## 📄 许可证 / License
+## 📚 文档
+
+| 文档 | 说明 |
+|------|------|
+| [软件需求规格说明书](private/document/《AutoTest%20Hub%20单人落地版%20%20软件需求规格说明书》.md) | 详细需求文档 |
+| [系统概要设计说明书](private/document/《AutoTest%20Hub%20单人落地版%20系统概要设计说明书》.md) | 技术架构设计 |
+| [用户操作手册](private/document/《AutoTest%20Hub%20单人落地版%20用户操作手册》.md) | 使用指南 |
+| [运维与故障排查手册](private/document/《AutoTest%20Hub%20单人落地版%20运维与故障排查手册》.md) | 运维指南 |
+| [验收测试用例清单](private/document/《AutoTest%20Hub%20单人落地版%20验收测试用例清单》.md) | 验收标准 |
+
+---
+
+## 🤝 贡献指南
+
+这是一个单人开发项目，欢迎提出建议和反馈。
+
+---
+
+## 📄 许可证
 
 MIT License
 
 ---
 
-*最后更新 / Last Updated: 2026-06-16*
-*维护者 / Maintainer: AI 协作开发团队*
+*最后更新：2026-06-16*
+*维护者：AI 协作开发团队*
