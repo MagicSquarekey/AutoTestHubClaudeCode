@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-AI辅助API
-@Function: 提供自然语言生成用例、元素智能修复、失败分析接口
+AI 辅助 API / AI assistant API
+@Function: 提供自然语言生成用例、元素智能修复、失败分析接口 / Provide NL case generation, element repair, failure analysis endpoints
 """
 
 from typing import Optional, List

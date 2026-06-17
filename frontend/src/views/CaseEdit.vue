@@ -1,13 +1,17 @@
+﻿<!--
+  用例编辑页面 / Test case edit page
+  @Function: 可视化拖拽编排测试步骤，配置关键字参数 / Visual drag-and-drop test step editing with keyword configuration
+-->
 <template>
   <div class="case-edit">
-    <!-- 顶部操作栏 -->
+    <!-- 顶部操作栏：返回、用例名称、调试、保存 / Top bar: back, case name, debug, save -->
     <el-card shadow="never" class="top-bar">
       <div class="top-left">
         <el-button :icon="Back" @click="router.back()">返回</el-button>
         <el-divider direction="vertical" />
         <el-input
           v-model="formData.case_name"
-          placeholder="用例名称"
+          placeholder="请输入用例名称*"
           style="width: 300px"
         />
       </div>
@@ -214,6 +218,7 @@ import { caseApi } from '@/api'
 const router = useRouter()
 const route = useRoute()
 
+// 用例表单数据 / Case form data
 const formData = ref({
   case_name: '',
   module: '',
@@ -352,6 +357,11 @@ const toggleSortMode = () => {
 }
 
 const handleSave = async () => {
+  // 验证用例名称必填
+  if (!formData.value.case_name || !formData.value.case_name.trim()) {
+    ElMessage.warning('请输入用例名称')
+    return
+  }
   try {
     const data = {
       ...formData.value,
@@ -522,3 +532,4 @@ const handleDebug = () => {
   overflow-y: auto;
 }
 </style>
+

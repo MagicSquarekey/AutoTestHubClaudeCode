@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-系统设置服务
-@Function: 提供系统配置、数据备份恢复、全局变量管理功能
+系统设置服务 / System settings service
+@Function: 提供系统配置、数据备份恢复、全局变量管理功能 / Provide config, backup/restore, global variable management
 """
 
 import json

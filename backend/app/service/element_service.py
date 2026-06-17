@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-元素管理服务
-@Function: 提供测试元素的业务逻辑处理
+元素管理服务 / Element management service
+@Function: 提供测试元素的业务逻辑处理 / Provide business logic for test elements
 """
 
 import json

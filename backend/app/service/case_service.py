@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-用例管理服务
-@Function: 提供测试用例的业务逻辑处理
+用例管理服务 / Test case management service
+@Function: 提供测试用例的业务逻辑处理 / Provide business logic for test cases
 """
 
 import json
@@ -16,7 +16,7 @@ logger = get_logger("case_service")
 
 
 class CaseService:
-    """用例管理服务类"""
+    """用例管理服务类 / Test case management service class"""
 
     def __init__(self, db: Session):
         self.db = db
@@ -32,24 +32,24 @@ class CaseService:
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
-        """@Function: 获取用例列表
+        """@Function: 获取用例列表 / Get case list with filters and pagination
 
         Args:
-            module: 模块筛选
-            tag: 标签筛选
-            priority: 优先级筛选
-            platform: 平台筛选
-            status: 状态筛选
-            keyword: 关键词搜索
-            page: 页码
-            page_size: 每页数量
+            module: 模块筛选 / Module filter
+            tag: 标签筛选 / Tag filter
+            priority: 优先级筛选 / Priority filter
+            platform: 平台筛选 / Platform filter
+            status: 状态筛选 / Status filter
+            keyword: 关键词搜索 / Keyword search
+            page: 页码 / Page number
+            page_size: 每页数量 / Page size
 
         Returns:
-            包含列表和分页信息的字典
+            包含列表和分页信息的字典 / Dict with list and pagination info
         """
         query = self.db.query(TestCase)
 
-        # 应用筛选条件
+        # 应用筛选条件 / Apply filters
         if module:
             query = query.filter(TestCase.module == module)
         if tag:
@@ -68,10 +68,10 @@ class CaseService:
                 )
             )
 
-        # 计算总数
+        # 计算总数 / Count total
         total = query.count()
 
-        # 分页
+        # 分页查询 / Paginate query
         cases = query.order_by(TestCase.update_time.desc()).offset((page - 1) * page_size).limit(page_size).all()
 
         return {
@@ -82,27 +82,49 @@ class CaseService:
         }
 
     def get_case_by_id(self, case_id: int) -> Optional[Dict[str, Any]]:
-        """@Function: 根据ID获取用例
+        """@Function: 根据 ID 获取用例 / Get case by ID
 
         Args:
-            case_id: 用例ID
+            case_id: 用例 ID / Case ID
 
         Returns:
-            用例字典或None
+            用例字典或 None / Case dict or None
         """
         case = self.db.query(TestCase).filter(TestCase.id == case_id).first()
         return case.to_dict() if case else None
 
-    def create_case(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """@Function: 创建用例
+    def _check_name_unique(self, case_name: str, exclude_id: Optional[int] = None) -> None:
+        """@Function: 检查用例名称是否已存在 / Check if case name already exists
 
         Args:
-            data: 用例数据
+            case_name: 用例名称 / Case name
+            exclude_id: 排除的用例 ID（更新时使用）/ Case ID to exclude (for update)
+
+        Raises:
+            ValueError: 名称已存在时抛出 / Raised when name already exists
+        """
+        query = self.db.query(TestCase).filter(TestCase.case_name == case_name)
+        if exclude_id is not None:
+            query = query.filter(TestCase.id != exclude_id)
+        if query.first():
+            raise ValueError(f"用例名称已存在: {case_name}")
+
+    def create_case(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """@Function: 创建用例 / Create a new case
+
+        Args:
+            data: 用例数据 / Case data
 
         Returns:
-            创建的用例字典
+            创建的用例字典 / Created case dict
+
+        Raises:
+            ValueError: 名称已存在 / Name already exists
         """
-        # 处理标签
+        # 检查名称唯一性 / Check name uniqueness
+        self._check_name_unique(data.get("case_name", ""))
+
+        # 处理标签 / Process tags
         if isinstance(data.get("tags"), list):
             data["tags"] = ",".join(data["tags"])
 
@@ -111,50 +133,57 @@ class CaseService:
         self.db.commit()
         self.db.refresh(case)
 
-        logger.info(f"创建用例成功: {case.case_name}")
+        logger.info(f"创建用例成功 / Case created: {case.case_name}")
         return case.to_dict()
 
     def update_case(self, case_id: int, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """@Function: 更新用例
+        """@Function: 更新用例 / Update an existing case
 
         Args:
-            case_id: 用例ID
-            data: 更新数据
+            case_id: 用例 ID / Case ID
+            data: 更新数据 / Update data
 
         Returns:
-            更新后的用例字典或None
+            更新后的用例字典或 None / Updated case dict or None
+
+        Raises:
+            ValueError: 名称已存在 / Name already exists
         """
         case = self.db.query(TestCase).filter(TestCase.id == case_id).first()
         if not case:
             return None
 
-        # 处理标签
+        # 如果修改了名称，检查唯一性 / Check uniqueness if name is changed
+        if "case_name" in data and data["case_name"] != case.case_name:
+            self._check_name_unique(data["case_name"], exclude_id=case_id)
+
+        # 处理标签 / Process tags
         if isinstance(data.get("tags"), list):
             data["tags"] = ",".join(data["tags"])
 
-        # 更新字段
+        # 更新字段 / Update fields
         for key, value in data.items():
             if hasattr(case, key):
                 setattr(case, key, value)
 
-        # 版本号+1
+        # 版本号 +1 / Increment version
         case.version += 1
         case.update_time = datetime.now()
 
         self.db.commit()
         self.db.refresh(case)
 
-        logger.info(f"更新用例成功: {case.case_name}")
+        logger.info(f"更新用例成功 / Case updated: {case.case_name}")
         return case.to_dict()
 
     def delete_case(self, case_id: int) -> bool:
-        """@Function: 删除用例
+        """@Function: 删除用例 / Delete a case
 
         Args:
-            case_id: 用例ID
+            case_id: 用例 ID / Case ID
 
         Returns:
-            是否删除成功
+            是否删除成功 / Whether deletion succeeded
         """
         case = self.db.query(TestCase).filter(TestCase.id == case_id).first()
         if not case:
@@ -163,39 +192,47 @@ class CaseService:
         self.db.delete(case)
         self.db.commit()
 
-        logger.info(f"删除用例成功: {case.case_name}")
+        logger.info(f"删除用例成功 / Case deleted: {case.case_name}")
         return True
 
     def batch_delete_cases(self, case_ids: List[int]) -> int:
-        """@Function: 批量删除用例
+        """@Function: 批量删除用例 / Batch delete cases
 
         Args:
-            case_ids: 用例ID列表
+            case_ids: 用例 ID 列表 / Case ID list
 
         Returns:
-            删除的数量
+            删除的数量 / Number of deleted cases
         """
         count = self.db.query(TestCase).filter(TestCase.id.in_(case_ids)).delete()
         self.db.commit()
 
-        logger.info(f"批量删除用例成功: {count}条")
+        logger.info(f"批量删除用例成功 / Batch deleted: {count} cases")
         return count
 
     def copy_case(self, case_id: int) -> Optional[Dict[str, Any]]:
-        """@Function: 复制用例
+        """@Function: 复制用例 / Copy a case
 
         Args:
-            case_id: 源用例ID
+            case_id: 源用例 ID / Source case ID
 
         Returns:
-            复制的用例字典或None
+            复制的用例字典或 None / Copied case dict or None
         """
         source = self.db.query(TestCase).filter(TestCase.id == case_id).first()
         if not source:
             return None
 
+        # 生成唯一副本名称 / Generate unique copy name
+        base_name = f"{source.case_name}_副本"
+        copy_name = base_name
+        counter = 2
+        while self.db.query(TestCase).filter(TestCase.case_name == copy_name).first():
+            copy_name = f"{base_name}{counter}"
+            counter += 1
+
         new_case = TestCase(
-            case_name=f"{source.case_name}_副本",
+            case_name=copy_name,
             module=source.module,
             tags=source.tags,
             priority=source.priority,
@@ -209,19 +246,19 @@ class CaseService:
         self.db.commit()
         self.db.refresh(new_case)
 
-        logger.info(f"复制用例成功: {new_case.case_name}")
+        logger.info(f"复制用例成功 / Case copied: {new_case.case_name}")
         return new_case.to_dict()
 
     def get_case_versions(self, case_id: int) -> List[Dict[str, Any]]:
-        """@Function: 获取用例版本历史
+        """@Function: 获取用例版本历史 / Get case version history
 
         Args:
-            case_id: 用例ID
+            case_id: 用例 ID / Case ID
 
         Returns:
-            版本列表
+            版本列表 / Version list
         """
-        # 简化实现：返回当前版本信息
+        # 简化实现：返回当前版本信息 / Simplified: return current version info
         case = self.db.query(TestCase).filter(TestCase.id == case_id).first()
         if not case:
             return []
@@ -230,36 +267,36 @@ class CaseService:
             {
                 "version": case.version,
                 "update_time": case.update_time.strftime("%Y-%m-%d %H:%M:%S") if case.update_time else None,
-                "description": "当前版本",
+                "description": "当前版本 / Current version",
             }
         ]
 
     def rollback_case(self, case_id: int, version: int) -> Optional[Dict[str, Any]]:
-        """@Function: 回滚到指定版本
+        """@Function: 回滚到指定版本 / Rollback to specified version
 
         Args:
-            case_id: 用例ID
-            version: 目标版本号
+            case_id: 用例 ID / Case ID
+            version: 目标版本号 / Target version number
 
         Returns:
-            回滚后的用例字典或None
+            回滚后的用例字典或 None / Rolled back case dict or None
         """
-        # 简化实现：实际应存储历史版本
+        # 简化实现：实际应存储历史版本 / Simplified: should store history in production
         case = self.db.query(TestCase).filter(TestCase.id == case_id).first()
         if not case:
             return None
 
-        logger.info(f"回滚用例: {case.case_name} 到版本 {version}")
+        logger.info(f"回滚用例 / Rollback case: {case.case_name} to version {version}")
         return case.to_dict()
 
     def export_cases(self, case_ids: List[int]) -> Dict[str, Any]:
-        """@Function: 导出用例
+        """@Function: 导出用例 / Export cases
 
         Args:
-            case_ids: 用例ID列表
+            case_ids: 用例 ID 列表 / Case ID list
 
         Returns:
-            导出的用例数据
+            导出的用例数据 / Exported case data
         """
         cases = self.db.query(TestCase).filter(TestCase.id.in_(case_ids)).all()
 
@@ -271,13 +308,13 @@ class CaseService:
         }
 
     def import_cases(self, content: bytes) -> Dict[str, Any]:
-        """@Function: 导入用例
+        """@Function: 导入用例 / Import cases
 
         Args:
-            content: JSON文件内容
+            content: JSON 文件内容 / JSON file content
 
         Returns:
-            导入结果
+            导入结果 / Import result
         """
         try:
             data = json.loads(content.decode("utf-8"))
@@ -285,11 +322,11 @@ class CaseService:
 
             imported_count = 0
             for case_data in cases_data:
-                # 处理标签
+                # 处理标签 / Process tags
                 if isinstance(case_data.get("tags"), list):
                     case_data["tags"] = ",".join(case_data["tags"])
 
-                # 移除ID，创建新用例
+                # 移除 ID，创建新用例 / Remove ID, create new case
                 case_data.pop("id", None)
                 case_data.pop("create_time", None)
                 case_data.pop("update_time", None)
@@ -300,27 +337,27 @@ class CaseService:
 
             self.db.commit()
 
-            logger.info(f"导入用例成功: {imported_count}条")
+            logger.info(f"导入用例成功 / Cases imported: {imported_count}")
             return {"imported_count": imported_count}
 
         except Exception as e:
-            logger.error(f"导入用例失败: {e}")
+            logger.error(f"导入用例失败 / Import failed: {e}")
             raise
 
     def get_module_list(self) -> List[str]:
-        """@Function: 获取所有模块列表
+        """@Function: 获取所有模块列表 / Get all module names
 
         Returns:
-            模块名称列表
+            模块名称列表 / Module name list
         """
         modules = self.db.query(TestCase.module).distinct().all()
         return [m[0] for m in modules if m[0]]
 
     def get_tag_list(self) -> List[str]:
-        """@Function: 获取所有标签列表
+        """@Function: 获取所有标签列表 / Get all tag names
 
         Returns:
-            标签名称列表
+            标签名称列表 / Tag name list
         """
         cases = self.db.query(TestCase.tags).all()
         tags = set()

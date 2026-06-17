@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-设备管理API
-@Function: 提供设备发现、连接、管理接口
+设备管理 API / Device management API
+@Function: 提供设备发现、连接、管理接口 / Provide device discovery, connection, management endpoints
 """
 
 from typing import Optional

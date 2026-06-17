@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-执行引擎服务
-@Function: 提供用例执行的核心业务逻辑
+执行引擎服务 / Execution engine service
+@Function: 提供用例执行的核心业务逻辑 / Provide core business logic for test execution
 """
 
 import uuid
 import json
 import time
+import asyncio
 import threading
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.test_case import TestCase
 from app.models.exec_record import ExecRecord
 from app.models.test_suite import TestSuite
+from app.engine.execution_engine import ExecutionEngine
 from app.core.config import settings
 from app.utils.logger import get_logger
 
@@ -303,11 +305,14 @@ class ExecService:
         })
 
     def _execute_task(self, task_id: str):
-        """@Function: 执行任务（内部方法）
+        """@Function: 执行任务（内部方法，在独立线程中运行）
 
         Args:
             task_id: 任务ID
         """
+        import sys
+        from app.models.database import SessionLocal
+
         with self._task_lock:
             task = self._tasks.get(task_id)
             if not task:
@@ -316,12 +321,93 @@ class ExecService:
             task["status"] = TaskStatus.RUNNING
             task["start_time"] = time.time()
 
+        # 创建独立的数据库会话（不依赖 FastAPI 的请求会话）
+        db = SessionLocal()
+        record = None
+        engine = None
+
+        logger.info(f"任务 {task_id} 开始执行（新代码版本）")
+
         try:
             # 更新数据库状态
-            record = self.db.query(ExecRecord).filter(ExecRecord.task_id == task_id).first()
+            record = db.query(ExecRecord).filter(ExecRecord.task_id == task_id).first()
             if record:
-                record.status = TaskStatus.RUNNING
-                self.db.commit()
+                try:
+                    record.status = TaskStatus.RUNNING
+                    db.commit()
+                except Exception as e:
+                    logger.warning(f"更新运行状态失败，继续执行: {e}")
+                    db.rollback()
+
+            # 创建执行引擎
+            params = task["params"]
+            engine = ExecutionEngine(
+                platform=params.get("platform", "web"),
+                browser_type=params.get("browser_type", "chromium"),
+                headless=params.get("headless", settings.HEADLESS),
+                timeout=params.get("timeout", settings.BROWSER_TIMEOUT),
+            )
+
+            # 在线程中创建新的事件循环运行异步引擎
+            # Windows 需要 ProactorEventLoop 才支持子进程
+            if sys.platform == "win32":
+                loop = asyncio.ProactorEventLoop()
+            else:
+                loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._run_task_with_engine(task_id, task, engine, db))
+            finally:
+                loop.close()
+
+        except Exception as e:
+            logger.error(f"任务 {task_id} 执行失败: {e}")
+
+            with self._task_lock:
+                task["status"] = TaskStatus.FAILED
+                task["end_time"] = time.time()
+
+            if record:
+                try:
+                    db.rollback()  # 先回滚，再更新
+                    record.status = TaskStatus.FAILED
+                    record.error_message = str(e)[:500]
+                    db.commit()
+                except Exception as commit_err:
+                    logger.error(f"更新失败状态也失败: {commit_err}")
+                    db.rollback()
+
+        finally:
+            # 确保引擎关闭
+            if engine:
+                try:
+                    if sys.platform == "win32":
+                        cleanup_loop = asyncio.ProactorEventLoop()
+                    else:
+                        cleanup_loop = asyncio.new_event_loop()
+                    cleanup_loop.run_until_complete(engine.stop())
+                    cleanup_loop.close()
+                except Exception:
+                    pass
+
+            # 关闭独立数据库会话
+            try:
+                db.close()
+            except Exception:
+                pass
+
+    async def _run_task_with_engine(self, task_id: str, task: Dict[str, Any], engine: ExecutionEngine, db: Session):
+        """@Function: 使用引擎执行任务（异步方法）
+
+        Args:
+            task_id: 任务ID
+            task: 任务信息
+            engine: 执行引擎
+            db: 独立的数据库会话
+        """
+        try:
+            # 启动引擎
+            await engine.start()
 
             # 执行用例
             cases = task["cases"]
@@ -333,12 +419,12 @@ class ExecService:
                     if task["status"] == TaskStatus.STOPPED:
                         break
                     while task["status"] == TaskStatus.PAUSED:
-                        time.sleep(0.5)
+                        await asyncio.sleep(0.5)
 
                     task["current_case_index"] = i
 
                 # 执行用例
-                case_result = self._execute_case(task_id, case)
+                case_result = await self._execute_case_async(task_id, case, engine)
                 results.append(case_result)
 
                 with self._task_lock:
@@ -350,6 +436,7 @@ class ExecService:
                 task["end_time"] = time.time()
 
             # 更新数据库记录
+            record = db.query(ExecRecord).filter(ExecRecord.task_id == task_id).first()
             if record:
                 pass_count = sum(1 for r in results if r.get("status") == "passed")
                 fail_count = sum(1 for r in results if r.get("status") == "failed")
@@ -358,28 +445,21 @@ class ExecService:
                 record.pass_rate = round(pass_count / len(results) * 100, 2) if results else 0
                 record.exec_duration = int(task["end_time"] - task["start_time"])
                 record.status = TaskStatus.COMPLETED
-                self.db.commit()
+                db.commit()
 
             logger.info(f"任务 {task_id} 执行完成")
 
         except Exception as e:
             logger.error(f"任务 {task_id} 执行失败: {e}")
+            raise
 
-            with self._task_lock:
-                task["status"] = TaskStatus.FAILED
-                task["end_time"] = time.time()
-
-            if record:
-                record.status = TaskStatus.FAILED
-                record.error_message = str(e)
-                self.db.commit()
-
-    def _execute_case(self, task_id: str, case: Dict[str, Any]) -> Dict[str, Any]:
-        """@Function: 执行单个用例（内部方法）
+    async def _execute_case_async(self, task_id: str, case: Dict[str, Any], engine: ExecutionEngine) -> Dict[str, Any]:
+        """@Function: 执行单个用例（异步方法）
 
         Args:
             task_id: 任务ID
             case: 用例信息
+            engine: 执行引擎
 
         Returns:
             用例执行结果
@@ -403,7 +483,7 @@ class ExecService:
                 task["current_step_index"] = j
 
             # 执行步骤
-            step_result = self._execute_step(task_id, case_id, step)
+            step_result = await self._execute_step_async(task_id, case_id, step, engine)
             step_results.append(step_result)
 
             # 记录日志
@@ -423,7 +503,7 @@ class ExecService:
                 # 检查重试配置
                 retry_count = step.get("retry_count", 0)
                 for _ in range(retry_count):
-                    step_result = self._execute_step(task_id, case_id, step)
+                    step_result = await self._execute_step_async(task_id, case_id, step, engine)
                     if step_result["status"] == "passed":
                         status = "passed"
                         break
@@ -443,13 +523,14 @@ class ExecService:
             "step_results": step_results,
         }
 
-    def _execute_step(self, task_id: str, case_id: int, step: Dict[str, Any]) -> Dict[str, Any]:
-        """@Function: 执行单个步骤（内部方法）
+    async def _execute_step_async(self, task_id: str, case_id: int, step: Dict[str, Any], engine: ExecutionEngine) -> Dict[str, Any]:
+        """@Function: 执行单个步骤（异步方法）
 
         Args:
             task_id: 任务ID
             case_id: 用例ID
             step: 步骤信息
+            engine: 执行引擎
 
         Returns:
             步骤执行结果
@@ -460,14 +541,26 @@ class ExecService:
 
         logger.debug(f"执行步骤: {keyword}")
 
-        # TODO: 实际调用驱动执行步骤
-        # 这里返回模拟结果
-        time.sleep(0.1)  # 模拟执行时间
+        start_time = time.time()
 
-        return {
-            "step_id": step_id,
-            "keyword": keyword,
-            "status": "passed",
-            "duration": 0.1,
-            "message": "执行成功",
-        }
+        try:
+            result = await engine.execute_step(step)
+            duration = round(time.time() - start_time, 2)
+
+            return {
+                "step_id": step_id,
+                "keyword": keyword,
+                "status": result.get("status", "failed"),
+                "duration": duration,
+                "message": result.get("message", ""),
+            }
+        except Exception as e:
+            duration = round(time.time() - start_time, 2)
+            logger.error(f"步骤执行异常: {e}")
+            return {
+                "step_id": step_id,
+                "keyword": keyword,
+                "status": "failed",
+                "duration": duration,
+                "message": str(e),
+            }

@@ -1,6 +1,10 @@
+<!--
+  测试报告页面 / Test report page
+  @Function: 展示执行统计、报告列表、失败分析 / Display execution stats, report list, failure analysis
+-->
 <template>
   <div class="report-page">
-    <!-- 统计概览 -->
+    <!-- 统计概览 / Statistics overview -->
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-AI辅助服务
-@Function: 提供自然语言生成用例、元素智能修复、失败分析功能
+AI 辅助服务 / AI assistant service
+@Function: 提供自然语言生成用例、元素智能修复、失败分析功能 / Provide NL case generation, element repair, failure analysis
 """
 
 import json

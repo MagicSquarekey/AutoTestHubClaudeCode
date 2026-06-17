@@ -1,5 +1,10 @@
+/**
+ * 路由配置 / Router configuration
+ * @Function: 定义前端页面路由和导航守卫 / Define frontend page routes and navigation guards
+ */
 import { createRouter, createWebHistory } from 'vue-router'
 
+// 路由表 / Route table
 const routes = [
   {
     path: '/',
@@ -59,15 +64,23 @@ const routes = [
         component: () => import('@/views/Settings.vue'),
         meta: { title: '系统设置', icon: 'Setting' },
       },
+      {
+        path: 'record',
+        name: 'Record',
+        component: () => import('@/views/Record.vue'),
+        meta: { title: '页面录制', icon: 'VideoCamera' },
+      },
     ],
   },
 ]
 
+// 创建路由实例 / Create router instance
 const router = createRouter({
   history: createWebHistory(),
   routes,
 })
 
+// 全局前置守卫：动态设置页面标题 / Global before guard: dynamically set page title
 router.beforeEach((to, from, next) => {
   document.title = to.meta.title ? `${to.meta.title} - AutoTest Hub` : 'AutoTest Hub'
   next()

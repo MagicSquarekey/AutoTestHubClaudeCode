@@ -1,6 +1,10 @@
+<!--
+  任务调度页面 / Task scheduler page
+  @Function: 用例集管理和定时任务配置 / Test suite management and scheduled task configuration
+-->
 <template>
   <div class="scheduler-page">
-    <!-- 用例集管理 -->
+    <!-- 用例集管理 / Test suite management -->
     <el-card shadow="never">
       <template #header>
         <div class="card-header">

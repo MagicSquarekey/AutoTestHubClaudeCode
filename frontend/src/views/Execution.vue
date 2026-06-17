@@ -1,6 +1,10 @@
+<!--
+  执行控制页面 / Execution control page
+  @Function: 配置和启动测试执行，实时查看执行日志 / Configure and launch test execution, view real-time logs
+-->
 <template>
   <div class="execution-page">
-    <!-- 执行配置 -->
+    <!-- 执行配置 / Execution configuration -->
     <el-card shadow="never" class="exec-config">
       <template #header>
         <span>执行配置</span>

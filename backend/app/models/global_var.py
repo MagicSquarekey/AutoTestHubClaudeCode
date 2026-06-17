@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-全局变量数据模型
-@Function: 定义全局变量表结构，支持加密存储敏感数据
+全局变量数据模型 / Global variable data model
+@Function: 定义全局变量表结构，支持加密存储敏感数据 / Define global variable table with encrypted storage
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from app.models.database import Base
 
 
 class GlobalVar(Base):
-    """全局变量表"""
+    """全局变量表 / Global variable table"""
     __tablename__ = "global_var"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
@@ -23,7 +23,7 @@ class GlobalVar(Base):
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         return {
             "id": self.id,
             "var_name": self.var_name,

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-执行引擎API
-@Function: 提供用例执行、任务管理、执行控制接口
+执行引擎 API / Execution engine API
+@Function: 提供用例执行、任务管理、执行控制接口 / Provide execution, task management, control endpoints
 """
 
 from typing import List, Optional, Dict, Any

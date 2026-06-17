@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-任务调度API
-@Function: 提供定时任务、用例集管理接口
+任务调度 API / Task scheduler API
+@Function: 提供定时任务、用例集管理接口 / Provide scheduled task and test suite management endpoints
 """
 
 from typing import List, Optional

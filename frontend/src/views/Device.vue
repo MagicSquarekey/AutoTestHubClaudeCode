@@ -1,6 +1,10 @@
+<!--
+  设备管理页面 / Device management page
+  @Function: 浏览器和移动设备的连接管理 / Browser and mobile device connection management
+-->
 <template>
   <div class="device-page">
-    <!-- 浏览器管理 -->
+    <!-- 浏览器管理 / Browser management -->
     <el-card shadow="never">
       <template #header>
         <div class="card-header">

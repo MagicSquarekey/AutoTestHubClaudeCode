@@ -1,6 +1,11 @@
+﻿/**
+ * API 接口封装层 / API interface encapsulation layer
+ * @Function: 封装所有后端 API 调用，统一请求/响应处理 / Encapsulate all backend API calls with unified request/response handling
+ */
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+// 创建 axios 实例 / Create axios instance
 const api = axios.create({
   baseURL: '/api',
   timeout: 30000,
@@ -9,10 +14,10 @@ const api = axios.create({
   },
 })
 
-// 请求拦截器
+// 请求拦截器 / Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // 可以在这里添加token等认证信息
+    // 可以在这里添加 token 等认证信息 / Add token or auth info here
     return config
   },
   (error) => {
@@ -20,24 +25,27 @@ api.interceptors.request.use(
   }
 )
 
-// 响应拦截器
+// 响应拦截器 / Response interceptor
 api.interceptors.response.use(
   (response) => {
     const { data } = response
+    // 业务成功 / Business success
     if (data.code === 0) {
       return data.data
     }
+    // 业务失败，弹出错误提示 / Business failure, show error message
     ElMessage.error(data.message || '请求失败')
     return Promise.reject(new Error(data.message))
   },
   (error) => {
+    // HTTP 错误处理 / HTTP error handling
     const message = error.response?.data?.detail || error.message || '网络错误'
     ElMessage.error(message)
     return Promise.reject(error)
   }
 )
 
-// 用例管理API
+// ==================== 用例管理 API / Test Case API ====================
 export const caseApi = {
   getList: (params) => api.get('/case/list', { params }),
   getDetail: (id) => api.get(`/case/${id}`),
@@ -58,7 +66,7 @@ export const caseApi = {
   getTags: () => api.get('/case/tags/list'),
 }
 
-// 元素管理API
+// ==================== 元素管理 API / Element Management API ====================
 export const elementApi = {
   getList: (params) => api.get('/element/list', { params }),
   getDetail: (id) => api.get(`/element/${id}`),
@@ -74,7 +82,7 @@ export const elementApi = {
   batchSync: (params) => api.post('/element/batch-sync', null, { params }),
 }
 
-// 执行引擎API
+// ==================== 执行引擎 API / Execution Engine API ====================
 export const execApi = {
   run: (data) => api.post('/exec/run', data),
   runSuite: (suiteId, params) => api.post(`/exec/run-suite/${suiteId}`, null, { params }),
@@ -87,7 +95,7 @@ export const execApi = {
   debugBreakpoint: (data) => api.post('/exec/debug/breakpoint', data),
 }
 
-// 报告API
+// ==================== 测试报告 API / Test Report API ====================
 export const reportApi = {
   getList: (params) => api.get('/report/list', { params }),
   getDetail: (taskId) => api.get(`/report/${taskId}`),
@@ -95,12 +103,13 @@ export const reportApi = {
   getSteps: (taskId, params) => api.get(`/report/${taskId}/steps`, { params }),
   getFailureAnalysis: (taskId) => api.get(`/report/${taskId}/failure-analysis`),
   getStatisticsOverview: () => api.get('/report/statistics/overview'),
+  getCaseDistribution: () => api.get('/report/statistics/distribution'),
   getStatisticsTrend: (params) => api.get('/report/statistics/trend', { params }),
   exportDefect: (taskId, params) => api.post(`/report/${taskId}/export-defect`, null, { params }),
   replay: (taskId, caseId) => api.post(`/report/${taskId}/replay`, null, { params: { case_id: caseId } }),
 }
 
-// 设备管理API
+// ==================== 设备管理 API / Device Management API ====================
 export const deviceApi = {
   getList: (params) => api.get('/device/list', { params }),
   getDetail: (deviceId) => api.get(`/device/${deviceId}`),
@@ -114,7 +123,7 @@ export const deviceApi = {
   checkDriver: (browserType) => api.post('/device/browsers/driver-check', null, { params: { browser_type: browserType } }),
 }
 
-// 任务调度API
+// ==================== 任务调度 API / Task Scheduler API ====================
 export const schedulerApi = {
   getSuites: () => api.get('/scheduler/suites'),
   getSuiteDetail: (id) => api.get(`/scheduler/suites/${id}`),
@@ -129,7 +138,7 @@ export const schedulerApi = {
   toggleTask: (id) => api.post(`/scheduler/tasks/${id}/toggle`),
 }
 
-// 系统设置API
+// ==================== 系统设置 API / System Settings API ====================
 export const systemApi = {
   getConfigs: () => api.get('/system/configs'),
   getConfig: (key) => api.get(`/system/configs/${key}`),
@@ -145,7 +154,7 @@ export const systemApi = {
   getSystemInfo: () => api.get('/system/system-info'),
 }
 
-// AI辅助API
+// ==================== AI 辅助 API / AI Assistant API ====================
 export const aiApi = {
   generateCase: (data) => api.post('/ai/generate-case', data),
   repairElement: (data) => api.post('/ai/repair-element', data),
@@ -153,6 +162,30 @@ export const aiApi = {
   getFailureStatistics: (params) => api.get('/ai/failure-statistics', { params }),
   getConfig: () => api.get('/ai/config'),
   updateConfig: (data) => api.put('/ai/config', data),
+}
+
+// ==================== 页面录制 API / Page Recording API ====================
+export const recordApi = {
+  // 任务相关 / Task related
+  getTaskList: (params) => api.get('/record/tasks/list', { params }),
+  getTaskDetail: (id) => api.get(`/record/tasks/${id}`),
+  createTask: (data) => api.post('/record/tasks/create', data),
+  updateTask: (id, data) => api.put(`/record/tasks/${id}`, data),
+  deleteTask: (id) => api.delete(`/record/tasks/${id}`),
+  startRecording: (id) => api.post(`/record/tasks/${id}/start`),
+  stopRecording: (id) => api.post(`/record/tasks/${id}/stop`),
+  getRecordingStatus: (id) => api.get(`/record/tasks/${id}/status`),
+
+  // 步骤相关 / Step related
+  getSteps: (taskId) => api.get(`/record/tasks/${taskId}/steps`),
+  createStep: (data) => api.post('/record/steps/create', data),
+  updateStep: (id, data) => api.put(`/record/steps/${id}`, data),
+  deleteStep: (id) => api.delete(`/record/steps/${id}`),
+  moveStep: (id, direction) => api.post(`/record/steps/${id}/move`, { direction }),
+  batchCreateSteps: (taskId, data) => api.post(`/record/steps/batch-create?task_id=${taskId}`, data),
+
+  // 转换相关 / Conversion related
+  convertToCase: (taskId, data) => api.post(`/record/tasks/${taskId}/convert`, data),
 }
 
 export default api

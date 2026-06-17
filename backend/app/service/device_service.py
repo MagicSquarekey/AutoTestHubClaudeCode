@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-设备管理服务
-@Function: 提供设备发现、连接、管理功能
+设备管理服务 / Device management service
+@Function: 提供设备发现、连接、管理功能 / Provide device discovery, connection, management
 """
 
 import subprocess

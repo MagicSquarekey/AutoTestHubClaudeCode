@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-系统设置API
-@Function: 提供系统配置、数据备份恢复、全局变量管理接口
+系统设置 API / System settings API
+@Function: 提供系统配置、数据备份恢复、全局变量管理接口 / Provide config, backup/restore, global variable endpoints
 """
 
 from typing import Dict, Any, Optional

@@ -1,6 +1,10 @@
+<!--
+  元素管理页面 / Element management page
+  @Function: 元素的增删改查、多端定位符管理、健康巡检 / CRUD, multi-platform locator management, health check for elements
+-->
 <template>
   <div class="element-page">
-    <!-- 操作栏 -->
+    <!-- 操作栏：新建、导入、导出、健康巡检 / Action bar: create, import, export, health check -->
     <el-card shadow="never" class="action-bar">
       <div class="action-left">
         <el-button type="primary" :icon="Plus" @click="handleCreate">新建元素</el-button>
@@ -154,6 +158,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload, Download, Delete, Search, CircleCheck } from '@element-plus/icons-vue'
 import { elementApi } from '@/api'
 
+// 列表状态 / List state
 const loading = ref(false)
 const elementList = ref([])
 const selectedElements = ref([])

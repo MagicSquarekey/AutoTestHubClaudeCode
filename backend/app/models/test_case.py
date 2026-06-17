@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-测试用例数据模型
-@Function: 定义测试用例表结构，支持版本管理、分组、标签
+测试用例数据模型 / Test case data model
+@Function: 定义测试用例表结构，支持版本管理、分组、标签 / Define test case table with versioning, grouping, tags
 """
 
 from datetime import datetime
@@ -10,24 +10,24 @@ from app.models.database import Base
 
 
 class TestCase(Base):
-    """测试用例表"""
+    """测试用例表 / Test case table"""
     __tablename__ = "test_case"
 
-    id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
-    case_name = Column(String(200), nullable=False, comment="用例名称")
-    module = Column(String(100), default="", comment="所属模块/分组")
-    tags = Column(String(500), default="", comment="标签，逗号分隔")
-    priority = Column(String(10), default="P0", comment="优先级：P0/P1/P2")
-    description = Column(Text, default="", comment="用例描述")
-    steps = Column(Text, default="[]", comment="步骤内容，JSON格式")
-    version = Column(Integer, default=1, comment="版本号")
-    status = Column(Integer, default=1, comment="状态：1启用 0禁用")
-    platform = Column(String(50), default="web", comment="适用平台：web/android/ios/miniapp")
-    create_time = Column(DateTime, default=datetime.now, comment="创建时间")
-    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+    id = Column(Integer, primary_key=True, autoincrement=True, comment="主键 / Primary key")
+    case_name = Column(String(200), nullable=False, comment="用例名称 / Case name")
+    module = Column(String(100), default="", comment="所属模块/分组 / Module/Group")
+    tags = Column(String(500), default="", comment="标签，逗号分隔 / Tags, comma separated")
+    priority = Column(String(10), default="P0", comment="优先级：P0/P1/P2 / Priority")
+    description = Column(Text, default="", comment="用例描述 / Case description")
+    steps = Column(Text, default="[]", comment="步骤内容，JSON 格式 / Steps in JSON format")
+    version = Column(Integer, default=1, comment="版本号 / Version number")
+    status = Column(Integer, default=1, comment="状态：1 启用 0 禁用 / Status: 1=enabled 0=disabled")
+    platform = Column(String(50), default="web", comment="适用平台：web/android/ios/miniapp / Target platform")
+    create_time = Column(DateTime, default=datetime.now, comment="创建时间 / Create time")
+    update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间 / Update time")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         return {
             "id": self.id,
             "case_name": self.case_name,

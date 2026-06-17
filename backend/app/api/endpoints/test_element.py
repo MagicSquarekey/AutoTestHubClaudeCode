@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-元素管理API
-@Function: 提供测试元素的CRUD、定位符管理、健康巡检接口
+元素管理 API / Element management API
+@Function: 提供测试元素的 CRUD、定位符管理、健康巡检接口 / Provide CRUD, locator management, health check endpoints
 """
 
 from typing import List, Optional, Dict, Any

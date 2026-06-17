@@ -1,0 +1,15 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AutoTest Hub: Stop",
+      "type": "shell",
+      "command": "cmd",
+      "args": ["/c", "stop.bat"],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    }
+  ]
+}

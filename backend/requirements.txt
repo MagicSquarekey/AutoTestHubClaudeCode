@@ -1,44 +1,44 @@
-# AutoTest Hub 后端依赖
+# AutoTest Hub 后端依赖 / AutoTest Hub Backend Dependencies
 
-# Web框架
+# Web 框架 / Web Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
-# 数据库
+# 数据库 / Database
 sqlalchemy==2.0.23
 aiosqlite==0.19.0
 
-# 数据验证
+# 数据校验 / Data Validation
 pydantic==2.5.2
 pydantic-settings==2.1.0
 
-# 加密
+# 加密 / Encryption
 cryptography==41.0.7
 
-# 系统监控
+# 系统监控 / System Monitor
 psutil==5.9.6
 
-# 日志
+# 日志 / Logging
 loguru==0.7.2
 
-# 自动化驱动
+# 自动化驱动 / Automation Drivers
 playwright==1.40.0
 appium-python-client==3.1.0
 
-# OCR
+# OCR（按需启用 / Enable as needed）
 # paddlepaddle==2.5.2
 # paddleocr==2.7.0
 
-# 图像处理
+# 图像处理 / Image Processing（按需启用 / Enable as needed）
 # opencv-python==4.8.1.78
 
-# HTTP客户端
+# HTTP 客户端 / HTTP Client
 httpx==0.25.2
 
-# 任务调度
+# 任务调度 / Task Scheduler
 apscheduler==3.10.4
 
-# 数据处理
+# 数据处理 / Data Processing
 openpyxl==3.1.2
 pandas==2.1.4

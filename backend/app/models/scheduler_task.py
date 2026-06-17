@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-定时任务数据模型
-@Function: 定义定时任务表结构，支持Cron调度
+定时任务数据模型 / Scheduled task data model
+@Function: 定义定时任务表结构，支持 Cron 调度 / Define scheduled task table with Cron scheduling
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from app.models.database import Base
 
 
 class SchedulerTask(Base):
-    """定时任务表"""
+    """定时任务表 / Scheduled task table"""
     __tablename__ = "scheduler_task"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
@@ -28,7 +28,7 @@ class SchedulerTask(Base):
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         return {
             "id": self.id,
             "task_name": self.task_name,

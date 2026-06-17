@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-任务调度服务
-@Function: 提供定时任务、用例集管理功能
+任务调度服务 / Task scheduler service
+@Function: 提供定时任务、用例集管理功能 / Provide scheduled tasks and test suite management
 """
 
 import json

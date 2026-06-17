@@ -1,6 +1,10 @@
+﻿<!--
+  仪表盘页面 / Dashboard page
+  @Function: 展示测试概览统计、执行趋势图、最近执行记录 / Display test overview stats, execution trend chart, recent records
+-->
 <template>
   <div class="dashboard">
-    <!-- 统计卡片 -->
+    <!-- 统计卡片区域 / Statistics cards area -->
     <el-row :gutter="20" class="stat-cards">
       <el-col :span="6">
         <el-card shadow="hover" class="stat-card">
@@ -112,6 +116,7 @@ import { ref, onMounted } from 'vue'
 import * as echarts from 'echarts'
 import { reportApi } from '@/api'
 
+// 图表 DOM 引用 / Chart DOM references
 const trendChart = ref(null)
 const pieChart = ref(null)
 
@@ -123,6 +128,8 @@ const stats = ref({
 })
 
 const recentExecutions = ref([])
+const trendData = ref([])
+const distributionData = ref([])
 
 onMounted(async () => {
   await loadData()
@@ -139,6 +146,22 @@ const loadData = async () => {
       totalElements: 0,
     }
     recentExecutions.value = overview.recent_executions || []
+
+    // 获取趋势数据
+    try {
+      const trendResult = await reportApi.getStatisticsTrend({ days: 7 })
+      trendData.value = trendResult.trend || []
+    } catch (e) {
+      trendData.value = []
+    }
+
+    // 获取用例分布数据
+    try {
+      const distResult = await reportApi.getCaseDistribution()
+      distributionData.value = distResult.distribution || []
+    } catch (e) {
+      distributionData.value = []
+    }
   } catch (error) {
     console.error('加载数据失败:', error)
   }
@@ -148,17 +171,21 @@ const initCharts = () => {
   // 趋势图
   if (trendChart.value) {
     const chart = echarts.init(trendChart.value)
+    const dates = trendData.value.map(item => item.date || '')
+    const passRates = trendData.value.map(item => item.pass_rate || 0)
+    const execCounts = trendData.value.map(item => item.execution_count || 0)
+
     chart.setOption({
       tooltip: { trigger: 'axis' },
       legend: { data: ['通过率', '执行次数'] },
-      xAxis: { type: 'category', data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] },
+      xAxis: { type: 'category', data: dates },
       yAxis: [
         { type: 'value', name: '通过率(%)', max: 100 },
         { type: 'value', name: '次数' },
       ],
       series: [
-        { name: '通过率', type: 'line', data: [95, 92, 88, 96, 94, 90, 93] },
-        { name: '执行次数', type: 'bar', yAxisIndex: 1, data: [10, 15, 8, 12, 20, 5, 18] },
+        { name: '通过率', type: 'line', data: passRates },
+        { name: '执行次数', type: 'bar', yAxisIndex: 1, data: execCounts },
       ],
     })
   }
@@ -171,14 +198,11 @@ const initCharts = () => {
       legend: { orient: 'vertical', left: 'left' },
       series: [
         {
+          name: '用例分布',
           type: 'pie',
-          radius: '50%',
-          data: [
-            { value: 40, name: 'Web端' },
-            { value: 30, name: 'Android端' },
-            { value: 20, name: '小程序' },
-            { value: 10, name: 'iOS端' },
-          ],
+          radius: '55%',
+          center: ['50%', '50%'],
+          data: distributionData.value,
         },
       ],
     })
@@ -186,13 +210,13 @@ const initCharts = () => {
 }
 
 const getPlatformTag = (platform) => {
-  const map = { web: '', android: 'success', ios: 'warning', miniapp: 'info' }
-  return map[platform] || ''
+  const map = { web: 'primary', android: 'success', ios: 'warning', miniapp: 'info' }
+  return map[platform] || 'info'
 }
 
 const getStatusTag = (status) => {
   const map = { completed: 'success', failed: 'danger', running: 'warning', pending: 'info' }
-  return map[status] || ''
+  return map[status] || 'info'
 }
 
 const formatDuration = (seconds) => {

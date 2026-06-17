@@ -1,6 +1,10 @@
+<!--
+  系统设置页面 / System settings page
+  @Function: 配置执行参数、AI 设置、全局变量、系统信息 / Configure execution params, AI settings, global variables, system info
+-->
 <template>
   <div class="settings-page">
-    <!-- 执行配置 -->
+    <!-- 执行配置 / Execution configuration -->
     <el-card shadow="never">
       <template #header>
         <span>执行配置</span>

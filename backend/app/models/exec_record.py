@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-执行记录数据模型
-@Function: 定义执行记录表结构，记录每次任务执行的详细信息
+执行记录数据模型 / Execution record data model
+@Function: 定义执行记录表结构，记录每次任务执行的详细信息 / Define execution record table with task details
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from app.models.database import Base
 
 
 class ExecRecord(Base):
-    """执行记录表"""
+    """执行记录表 / Execution record table"""
     __tablename__ = "exec_record"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
@@ -30,7 +30,7 @@ class ExecRecord(Base):
     exec_time = Column(DateTime, default=datetime.now, comment="执行时间")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         return {
             "id": self.id,
             "task_name": self.task_name,

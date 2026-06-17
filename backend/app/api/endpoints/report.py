@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
-测试报告API
-@Function: 提供报告查询、统计、导出接口
+测试报告 API / Test report API
+@Function: 提供报告查询、统计、导出接口 / Provide report query, statistics, export endpoints
 """
 
 from typing import Optional
@@ -14,6 +14,10 @@ from app.service.report_service import ReportService
 router = APIRouter()
 
 
+# ===== 固定路由（必须在 /{task_id} 之前注册，否则会被通配捕获）=====
+# Fixed routes (must be registered before /{task_id} to avoid wildcard capture)
+
+
 @router.get("/list", summary="获取报告列表")
 async def get_report_list(
     page: int = 1,
@@ -24,6 +28,37 @@ async def get_report_list(
     service = ReportService(db)
     result = service.get_report_list(page, page_size)
     return {"code": 0, "data": result}
+
+
+@router.get("/statistics/overview", summary="获取统计概览")
+async def get_statistics_overview(db: Session = Depends(get_db)):
+    """@Function: 获取测试统计概览数据"""
+    service = ReportService(db)
+    stats = service.get_statistics_overview()
+    return {"code": 0, "data": stats}
+
+
+@router.get("/statistics/trend", summary="获取趋势数据")
+async def get_statistics_trend(
+    days: int = 30,
+    db: Session = Depends(get_db),
+):
+    """@Function: 获取测试通过率趋势数据"""
+    service = ReportService(db)
+    trend = service.get_statistics_trend(days)
+    return {"code": 0, "data": trend}
+
+
+@router.get("/statistics/distribution", summary="获取用例分布")
+async def get_case_distribution(db: Session = Depends(get_db)):
+    """@Function: 获取用例平台分布数据"""
+    service = ReportService(db)
+    distribution = service.get_case_distribution()
+    return {"code": 0, "data": distribution}
+
+
+# ===== 动态路由（通配符，放最后）=====
+# Dynamic routes (wildcards, register last)
 
 
 @router.get("/{task_id}", summary="获取报告详情")
@@ -64,25 +99,6 @@ async def get_failure_analysis(task_id: str, db: Session = Depends(get_db)):
     service = ReportService(db)
     analysis = service.get_failure_analysis(task_id)
     return {"code": 0, "data": analysis}
-
-
-@router.get("/statistics/overview", summary="获取统计概览")
-async def get_statistics_overview(db: Session = Depends(get_db)):
-    """@Function: 获取测试统计概览数据"""
-    service = ReportService(db)
-    stats = service.get_statistics_overview()
-    return {"code": 0, "data": stats}
-
-
-@router.get("/statistics/trend", summary="获取趋势数据")
-async def get_statistics_trend(
-    days: int = 30,
-    db: Session = Depends(get_db),
-):
-    """@Function: 获取测试通过率趋势数据"""
-    service = ReportService(db)
-    trend = service.get_statistics_trend(days)
-    return {"code": 0, "data": trend}
 
 
 @router.post("/{task_id}/export-defect", summary="导出缺陷详情")

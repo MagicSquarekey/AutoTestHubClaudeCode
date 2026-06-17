@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
-报告生成服务
-@Function: 提供测试报告的生成、查询、导出功能
+报告生成服务 / Report generation service
+@Function: 提供测试报告的生成、查询、导出功能 / Provide report generation, query, export
 """
 
 import json
@@ -223,6 +223,36 @@ class ReportService:
             "trend": list(trend_data.values()),
         }
 
+
+    def get_case_distribution(self) -> Dict[str, Any]:
+        """@Function: 获取用例平台分布
+
+        Returns:
+            用例按平台的分布数据
+        """
+        from app.models.test_case import TestCase
+
+        distribution = (
+            self.db.query(TestCase.platform, func.count(TestCase.id))
+            .filter(TestCase.status == 1)
+            .group_by(TestCase.platform)
+            .all()
+        )
+
+        platform_names = {
+            "web": "Web端",
+            "android": "Android端",
+            "ios": "iOS端",
+            "miniapp": "小程序",
+        }
+
+        return {
+            "distribution": [
+                {"name": platform_names.get(row[0], row[0]), "value": row[1]}
+                for row in distribution
+            ],
+        }
+
     def export_defect(self, task_id: str, case_id: Optional[int] = None) -> Dict[str, Any]:
         """@Function: 导出缺陷详情
 
@@ -266,3 +296,4 @@ class ReportService:
 
         logger.info(f"创建复现任务: {new_task_id}")
         return new_task_id
+

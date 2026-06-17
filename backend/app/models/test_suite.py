@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-测试套件数据模型
-@Function: 定义测试套件表结构，支持用例集管理
+测试套件数据模型 / Test suite data model
+@Function: 定义测试套件表结构，支持用例集管理 / Define test suite table for case collection management
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from app.models.database import Base
 
 
 class TestSuite(Base):
-    """测试套件表"""
+    """测试套件表 / Test suite table"""
     __tablename__ = "test_suite"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
@@ -24,7 +24,7 @@ class TestSuite(Base):
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         import json
         return {
             "id": self.id,

@@ -1,6 +1,10 @@
+<!--
+  主布局组件 / Main layout component
+  @Function: 侧边栏导航 + 顶部面包屑 + 内容区 / Sidebar navigation + breadcrumb header + content area
+-->
 <template>
   <el-container class="layout-container">
-    <!-- 侧边栏 -->
+    <!-- 侧边栏导航 / Sidebar navigation -->
     <el-aside :width="isCollapse ? '64px' : '220px'" class="aside">
       <div class="logo" @click="router.push('/')">
         <el-icon :size="24"><Cpu /></el-icon>
@@ -13,7 +17,7 @@
         class="side-menu"
       >
         <template v-for="route in menuRoutes" :key="route.path">
-          <el-menu-item :index="route.path">
+          <el-menu-item :index="'/' + route.path">
             <el-icon><component :is="route.meta.icon" /></el-icon>
             <template #title>{{ route.meta.title }}</template>
           </el-menu-item>
@@ -75,7 +79,9 @@ import { Bell, User } from '@element-plus/icons-vue'
 const router = useRouter()
 const route = useRoute()
 
+// 侧边栏折叠状态 / Sidebar collapse state
 const isCollapse = ref(false)
+// 通知数量 / Notification count
 const notifyCount = ref(0)
 
 const currentRoute = computed(() => route.path)

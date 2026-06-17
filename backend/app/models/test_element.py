@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-测试元素数据模型
-@Function: 定义测试元素表结构，支持多端定位符、健康度管理
+测试元素数据模型 / Test element data model
+@Function: 定义测试元素表结构，支持多端定位符、健康度管理 / Define element table with multi-platform locators and health tracking
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from app.models.database import Base
 
 
 class TestElement(Base):
-    """测试元素表"""
+    """测试元素表 / Test element table"""
     __tablename__ = "test_element"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
@@ -26,7 +26,7 @@ class TestElement(Base):
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         import json
         return {
             "id": self.id,

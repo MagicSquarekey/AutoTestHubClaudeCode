@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-系统配置数据模型
-@Function: 定义系统配置表结构，存储全局配置项
+系统配置数据模型 / System configuration data model
+@Function: 定义系统配置表结构，存储全局配置项 / Define system config table for global settings
 """
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from app.models.database import Base
 
 
 class SysConfig(Base):
-    """系统配置表"""
+    """系统配置表 / System configuration table"""
     __tablename__ = "sys_config"
 
     id = Column(Integer, primary_key=True, autoincrement=True, comment="主键")
@@ -22,7 +22,7 @@ class SysConfig(Base):
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
     def to_dict(self):
-        """转换为字典"""
+        """@Function: 转换为字典 / Convert to dictionary"""
         return {
             "id": self.id,
             "config_key": self.config_key,

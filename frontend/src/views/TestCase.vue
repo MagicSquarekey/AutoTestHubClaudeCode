@@ -1,6 +1,10 @@
+<!--
+  用例管理页面 / Test case management page
+  @Function: 用例的增删改查、导入导出、批量操作 / CRUD, import/export, batch operations for test cases
+-->
 <template>
   <div class="test-case">
-    <!-- 操作栏 -->
+    <!-- 操作栏：新建、导入、导出、搜索、筛选 / Action bar: create, import, export, search, filter -->
     <el-card shadow="never" class="action-bar">
       <div class="action-left">
         <el-button type="primary" :icon="Plus" @click="handleCreate">新建用例</el-button>
@@ -136,6 +140,7 @@ import { caseApi, execApi } from '@/api'
 
 const router = useRouter()
 
+// 列表状态 / List state
 const loading = ref(false)
 const caseList = ref([])
 const selectedCases = ref([])

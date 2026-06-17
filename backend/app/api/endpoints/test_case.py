@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-用例管理API
-@Function: 提供测试用例的CRUD、导入导出、版本管理接口
+用例管理 API / Test case management API
+@Function: 提供测试用例的 CRUD、导入导出、版本管理接口 / Provide CRUD, import/export, version management endpoints
 """
 
 from typing import List, Optional
@@ -94,7 +94,10 @@ async def get_case(case_id: int, db: Session = Depends(get_db)):
 async def create_case(case: CaseCreate, db: Session = Depends(get_db)):
     """@Function: 创建新的测试用例"""
     service = CaseService(db)
-    result = service.create_case(case.dict())
+    try:
+        result = service.create_case(case.dict())
+    except ValueError as e:
+        return {"code": 1, "message": str(e)}
     return {"code": 0, "data": result, "message": "创建成功"}
 
 
@@ -102,7 +105,10 @@ async def create_case(case: CaseCreate, db: Session = Depends(get_db)):
 async def update_case(case_id: int, case: CaseUpdate, db: Session = Depends(get_db)):
     """@Function: 更新测试用例"""
     service = CaseService(db)
-    result = service.update_case(case_id, case.dict(exclude_unset=True))
+    try:
+        result = service.update_case(case_id, case.dict(exclude_unset=True))
+    except ValueError as e:
+        return {"code": 1, "message": str(e)}
     if not result:
         raise HTTPException(status_code=404, detail="用例不存在")
     return {"code": 0, "data": result, "message": "更新成功"}

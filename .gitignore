@@ -11,10 +11,15 @@ build/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 *~
+
+# VSCode（保留 .vscode/ 调试配置，排除个人设置）
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
 
 # OS
 .DS_Store
