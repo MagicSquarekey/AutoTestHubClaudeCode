@@ -83,7 +83,15 @@ Remove-Item -Path "<script_name>.py" -Force
 - **位置**：`.claude/tmp/`
 - **命名格式**：`plan-{timestamp}.md`
 
-#### 3. 执行日志
+#### 3. 后端测试文件
+- **位置**：`backend/`
+- **文件类型**：
+  - `create_*.py` — 测试创建脚本
+  - `test_*.png` / `test_*.jpg` — 测试图片
+  - `test_*.py` — 临时测试脚本
+- **特征**：不在 `tests/` 目录下的测试相关文件
+
+#### 4. 执行日志
 - **位置**：`.claude/tmp/`
 - **命名格式**：`execution-log-{timestamp}.md`
 
@@ -112,6 +120,9 @@ Remove-Item -Path "private/logs/*.log" -Force -ErrorAction SilentlyContinue
 
 # 清理临时脚本文件
 Remove-Item -Path "_*.py" -Force -ErrorAction SilentlyContinue
+
+# 清理后端测试文件
+Remove-Item -Path "backend/create_*.py", "backend/test_*.png", "backend/test_*.jpg", "backend/test_*.py" -Force -ErrorAction SilentlyContinue
 ```
 
 ### 清理规则
