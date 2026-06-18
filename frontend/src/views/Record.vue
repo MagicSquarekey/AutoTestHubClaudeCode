@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   页面录制页面 / Page recording page
   @Function: 录制浏览器操作，支持编辑和回放 / Record browser actions, support editing and replay
 -->
@@ -183,7 +183,7 @@
     </el-row>
 
     <!-- 新建任务对话框 / Create task dialog -->
-    <el-dialog v-model="createTaskDialogVisible" title="新建录制任务" width="500px">
+    <el-dialog v-model="createTaskDialogVisible" title="新建录制任务" width="500px" @keyup.enter="handleDialogEnter">
       <el-form :model="newTaskForm" label-width="80px">
         <el-form-item label="任务名称" required>
           <el-input v-model="newTaskForm.task_name" placeholder="请输入任务名称" />
@@ -384,6 +384,15 @@ function handleCreateTask() {
   createTaskDialogVisible.value = true
 }
 
+// 处理对话框Enter键提交 / Handle Enter key submission in dialog
+function handleDialogEnter(event) {
+  // 如果焦点在textarea内，不触发提交（允许textarea中换行）
+  if (event.target.tagName === 'TEXTAREA') {
+    return
+  }
+  confirmCreateTask()
+}
+
 async function confirmCreateTask() {
   if (!newTaskForm.value.task_name) {
     ElMessage.warning('请输入任务名称')
@@ -434,11 +443,6 @@ async function handleStartRecording() {
     return
   }
 
-  if (!targetUrl.value) {
-    ElMessage.warning('请输入目标URL')
-    return
-  }
-
   // 防止重复点击
   if (isStarting.value) {
     ElMessage.warning('正在启动录制，请稍候...')
@@ -448,8 +452,10 @@ async function handleStartRecording() {
   isStarting.value = true
 
   try {
-    // 先更新任务的 target_url
-    await recordApi.updateTask(currentTask.value.id, { target_url: targetUrl.value })
+    // 更新任务的 target_url（如果已填写）
+    if (targetUrl.value) {
+      await recordApi.updateTask(currentTask.value.id, { target_url: targetUrl.value })
+    }
 
     const res = await recordApi.startRecording(currentTask.value.id)
 
@@ -466,8 +472,11 @@ async function handleStartRecording() {
     // 更新当前任务状态
     currentTask.value.status = 'recording'
 
-    // 开始轮询状态 / Start polling status
-    startPollingStatus()
+    // 延迟启动轮询，给后端时间初始化引擎
+    // Delay polling start to give backend time to initialize engine
+    setTimeout(() => {
+      startPollingStatus()
+    }, 500)
   } catch (e) {
     console.error('开始录制失败:', e)
     ElMessage.error('开始录制失败: ' + (e.message || '未知错误'))
@@ -500,14 +509,17 @@ async function handleStopRecording() {
 }
 
 let pollingTimer = null
+let pollingErrorCount = 0  // 连续轮询错误计数 / Consecutive polling error count
 
 function startPollingStatus() {
   stopPollingStatus()
+  pollingErrorCount = 0
   pollingTimer = setInterval(async () => {
     if (!currentTask.value) return
 
     try {
       const status = await recordApi.getRecordingStatus(currentTask.value.id)
+      pollingErrorCount = 0  // 重置错误计数 / Reset error count
 
       // 更新步骤列表
       if (status.steps) {
@@ -525,7 +537,15 @@ function startPollingStatus() {
         loadTasks()
       }
     } catch (e) {
+      pollingErrorCount++
       console.error('获取录制状态失败:', e)
+      // 连续失败3次以上才认为录制结束（避免网络波动误判）
+      // Only consider recording ended after 3+ consecutive failures
+      if (pollingErrorCount >= 3 && isRecording.value) {
+        console.warn('连续轮询失败次数过多，可能录制已异常结束')
+        // 不自动设置 isRecording = false，让用户手动停止
+        // Don't auto-set isRecording = false, let user manually stop
+      }
     }
   }, 1000)  // 每秒轮询一次
 }
@@ -535,6 +555,7 @@ function stopPollingStatus() {
     clearInterval(pollingTimer)
     pollingTimer = null
   }
+  pollingErrorCount = 0
 }
 
 // ==================== 步骤操作 / Step operations ====================

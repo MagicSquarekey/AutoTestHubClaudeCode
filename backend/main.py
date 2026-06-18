@@ -9,12 +9,30 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
-from app.models.database import init_db
+from app.models.database import init_db, engine
 from app.api.router import api_router
 from app.engine.recording_manager import recording_manager
 from app.utils.logger import get_logger
 
 logger = get_logger("main")
+
+
+def reset_stale_recordings():
+    """@Function: 重置残留的录制状态 / Reset stale recording states on startup
+
+    When the app crashes or is force-closed during recording, the DB status
+    remains "recording" but RecordingManager has no memory of the task.
+    This function resets such stale tasks back to "pending" so they can be
+    re-recorded cleanly.
+    """
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        result = conn.execute(
+            text('UPDATE record_task SET status = "pending" WHERE status = "recording"')
+        )
+        if result.rowcount > 0:
+            logger.info(f"启动时重置了 {result.rowcount} 个残留录制任务状态为 pending")
+        conn.commit()
 
 
 @asynccontextmanager
@@ -24,6 +42,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"启动 {settings.APP_NAME} v{settings.APP_VERSION}")
     init_db()
     logger.info("数据库初始化完成 / Database initialized")
+    reset_stale_recordings()
     yield
     # 关闭时执行 / Run on shutdown
     logger.info("应用关闭，清理录制引擎...")

@@ -219,6 +219,8 @@ EVENT_LISTENER_SCRIPT = """
 
         // 通知录制引擎 / Notify recording engine
         window.dispatchEvent(new CustomEvent('__record_action', { detail: action }));
+
+        return action;
     }
 
     // 监听点击事件 / Listen to click events
@@ -232,15 +234,98 @@ EVENT_LISTENER_SCRIPT = """
         recordAction('click', element);
     }, true);
 
-    // 监听输入事件 / Listen to input events
+    // 监听输入事件（防抖 + 值去重避免重复记录）/ Listen to input events (debounced + value dedup)
+    const __inputTimers = {};
+    let __nextElementId = 1;
+    const __lastInputValues = {}; // 记录每个元素最后记录的输入值 / Track last recorded value per element
+    const __elementIdMap = new WeakMap(); // 元素引用→唯一ID / WeakMap for stable element key
+
+    // 获取或创建元素的唯一ID / Get or create unique ID for element
+    function getElementKey(element) {
+        const id = element.id || element.name || element.getAttribute('data-testid');
+        if (id) return id;
+
+        if (__elementIdMap.has(element)) {
+            return __elementIdMap.get(element);
+        }
+        const newId = 'el_' + (__nextElementId++);
+        __elementIdMap.set(element, newId);
+        return newId;
+    }
+
     document.addEventListener('input', (event) => {
         const element = event.target;
         if (element === document.body || element === document.documentElement) return;
         if (element.closest('[data-recording-control]')) return;
 
-        recordAction('input', element, element.value);
+        const timerKey = getElementKey(element);
+
+        // 跳过空值（IME候选阶段）/ Skip empty value (IME composition phase)
+        if (!element.value) return;
+
+        // 如果是追加输入（新值以旧值开头），直接更新已有记录 / Update in-place for appended input
+        const lastVal = __lastInputValues[timerKey];
+        if (lastVal && element.value.startsWith(lastVal) && element.value !== lastVal) {
+            // 遍历找到该元素最后一条input记录并更新 / Update last input record for this element
+            for (let i = __recorded_actions.length - 1; i >= 0; i--) {
+                const a = __recorded_actions[i];
+                if (a.action === 'input' && getElementKey(a.target_element) === timerKey) {
+                    a.input_value = element.value;
+                    a.timestamp = Date.now();
+                    break;
+                }
+            }
+            __lastInputValues[timerKey] = element.value;
+            return;
+        }
+
+        // 防抖：等待输入暂停后再记录 / Debounce: record after typing pauses
+        if (__inputTimers[timerKey]) {
+            clearTimeout(__inputTimers[timerKey]);
+        }
+        __inputTimers[timerKey] = setTimeout(() => {
+            if (element.value && element.value !== __lastInputValues[timerKey]) {
+                recordAction('input', element, element.value);
+                __lastInputValues[timerKey] = element.value;
+            }
+            delete __inputTimers[timerKey];
+        }, 1500);
     }, true);
 
+    // 监听blur事件，离开输入框时立即记录最终值 / Record final value on blur
+    document.addEventListener('blur', (event) => {
+        const element = event.target;
+        if (element === document.body || element === document.documentElement) return;
+        if (element.closest('[data-recording-control]')) return;
+        if (element.tagName !== 'INPUT' && element.tagName !== 'TEXTAREA') return;
+
+        const timerKey = getElementKey(element);
+
+        // 取消未触发的防抖定时器 / Cancel pending debounce timer
+        if (__inputTimers[timerKey]) {
+            clearTimeout(__inputTimers[timerKey]);
+            delete __inputTimers[timerKey];
+        }
+
+        // 如果有值变化且与上次不同，立即记录 / Record immediately if value changed
+        const lastVal = __lastInputValues[timerKey];
+        if (element.value && element.value !== lastVal) {
+            // 检查是否是追加输入（更新已有记录）/ Check if appending (update existing record)
+            if (lastVal && element.value.startsWith(lastVal)) {
+                for (let i = __recorded_actions.length - 1; i >= 0; i--) {
+                    const a = __recorded_actions[i];
+                    if (a.action === 'input' && getElementKey(a.target_element) === timerKey) {
+                        a.input_value = element.value;
+                        a.timestamp = Date.now();
+                        break;
+                    }
+                }
+            } else {
+                recordAction('input', element, element.value);
+            }
+            __lastInputValues[timerKey] = element.value;
+        }
+    }, true);
     // 监听 change 事件（用于 select）/ Listen to change events (for select)
     document.addEventListener('change', (event) => {
         const element = event.target;
@@ -256,6 +341,30 @@ EVENT_LISTENER_SCRIPT = """
             if (element === document.body || element === document.documentElement) return;
             if (element.closest('[data-recording-control]')) return;
 
+            // 键盘操作前记录输入值（同blur逻辑）/ Record input before key action (same as blur)
+            if ((element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') && element.value) {
+                const timerKey = getElementKey(element);
+                if (__inputTimers[timerKey]) {
+                    clearTimeout(__inputTimers[timerKey]);
+                    delete __inputTimers[timerKey];
+                }
+                const lastVal = __lastInputValues[timerKey];
+                if (element.value !== lastVal) {
+                    if (lastVal && element.value.startsWith(lastVal)) {
+                        for (let i = __recorded_actions.length - 1; i >= 0; i--) {
+                            const a = __recorded_actions[i];
+                            if (a.action === 'input' && getElementKey(a.target_element) === timerKey) {
+                                a.input_value = element.value;
+                                a.timestamp = Date.now();
+                                break;
+                            }
+                        }
+                    } else {
+                        recordAction('input', element, element.value);
+                    }
+                    __lastInputValues[timerKey] = element.value;
+                }
+            }
             recordAction('keyboard', element, event.key);
         }
     }, true);
@@ -385,7 +494,6 @@ class RecordingEngine:
                 # 检查浏览器是否还活着
                 if not self.is_alive:
                     logger.info("浏览器已关闭，停止轮询")
-                    self._is_recording = False
                     break
 
                 if not self._page:
@@ -428,7 +536,6 @@ class RecordingEngine:
                 # 如果连续错误次数超过阈值，停止轮询
                 if consecutive_errors >= max_consecutive_errors:
                     logger.error("连续错误次数过多，停止轮询")
-                    self._is_recording = False
                     break
 
     async def _inject_event_listeners(self) -> None:
@@ -450,11 +557,26 @@ class RecordingEngine:
         if not self._is_recording:
             return
 
+        # 检查浏览器和页面是否还可用 / Check if browser and page are still available
+        if not self._page or not self.is_alive:
+            return
+
         # 只处理主框架 / Only handle main frame
-        if frame != self._page.main_frame:
+        try:
+            if frame != self._page.main_frame:
+                return
+        except Exception:
             return
 
         url = frame.url
+
+        # 去重：如果上一次导航的URL相同，则跳过记录 / Dedup: skip if same URL as last navigation
+        if self._recorded_actions:
+            last_action = self._recorded_actions[-1]
+            if last_action.get("action_type") == "navigate" and last_action.get("input_value") == url:
+                logger.debug(f"跳过重复导航 / Skip duplicate navigation: {url}")
+                return
+
         logger.info(f"页面导航 / Page navigation: {url}")
 
         # 记录导航操作 / Record navigation action
@@ -471,16 +593,21 @@ class RecordingEngine:
         # 重新注入事件监听脚本 / Re-inject event listener script
         try:
             await asyncio.sleep(0.5)  # 等待页面加载 / Wait for page load
-            await self._inject_event_listeners()
+            if self._page and self.is_alive:
+                await self._inject_event_listeners()
         except Exception as e:
             logger.warning(f"重新注入脚本失败 / Failed to re-inject script: {e}")
 
         # 截图 / Take screenshot
-        await self._take_screenshot("navigate")
+        if self._page and self.is_alive:
+            await self._take_screenshot("navigate")
 
         # 回调通知 / Callback notification
         if self._on_action_callback:
-            await self._on_action_callback(action)
+            try:
+                await self._on_action_callback(action)
+            except Exception as e:
+                logger.warning(f"回调通知失败 / Callback notification failed: {e}")
 
     async def _take_screenshot(self, action_type: str) -> str:
         """@Function: 截图 / Take screenshot
