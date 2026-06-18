@@ -60,7 +60,7 @@
           />
         </div>
       </template>
-      <el-table :data="filteredCases" stripe @selection-change="handleSelectionChange" max-height="300">
+      <el-table :data="filteredCases" row-key="id" stripe @selection-change="handleSelectionChange" max-height="300">
         <el-table-column type="selection" width="55" />
         <el-table-column prop="case_name" label="用例名称" />
         <el-table-column prop="module" label="模块" width="120" />
@@ -103,7 +103,7 @@
       />
 
       <!-- 步骤执行详情 -->
-      <el-table :data="execSteps" stripe max-height="300">
+      <el-table :data="execSteps" row-key="step_index" stripe max-height="300">
         <el-table-column prop="step_index" label="步骤" width="60" />
         <el-table-column prop="step_name" label="步骤名称" />
         <el-table-column prop="keyword" label="关键字" width="120" />
@@ -401,6 +401,12 @@ const viewReport = (row) => {
 
 .log-item {
   line-height: 1.8;
+}
+
+/* 修复长文本换行 / Fix long text wrapping */
+.execution-page :deep(.el-table .cell) {
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 
 .log-time {

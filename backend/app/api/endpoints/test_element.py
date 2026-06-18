@@ -109,16 +109,186 @@ async def batch_delete_elements(elem_ids: List[int], db: Session = Depends(get_d
     count = service.batch_delete_elements(elem_ids)
     return {"code": 0, "data": {"deleted_count": count}, "message": f"成功删除{count}个元素"}
 
-
 @router.post("/health-check", summary="元素健康巡检")
 async def health_check(
     elem_ids: Optional[List[int]] = None,
     platform: str = "web",
     db: Session = Depends(get_db),
 ):
-    """@Function: 执行元素健康巡检"""
+    """@Function: 执行元素健康巡检，真正验证选择器是否有效"""
+    import asyncio
+    from app.driver.web_driver import WebDriver
+
+    # 获取需要巡检的元素列表
+    if elem_ids:
+        elements = []
+        for eid in elem_ids:
+            elem = service.get_element_by_id(eid)
+            if elem:
+                elements.append(elem)
+    else:
+        result_data = service.get_element_list(page=1, page_size=1000)
+        elements = result_data.get("list", [])
+        elements = result_data.get("list", [])
+
+    if not elements:
+        return {"code": 0, "data": {"total": 0, "passed": 0, "failed": 0, "results": []}}
+
+    # 启动浏览器验证
+    driver = WebDriver(headless=True, timeout=10000)
+    results = []
+    passed = 0
+    failed = 0
+
+    try:
+        await driver.launch()
+        await driver.navigate("about:blank")
+
+        for elem in elements:
+            elem_dict = elem.to_dict() if hasattr(elem, "to_dict") else elem
+            locators = elem_dict.get("locators", [])
+            elem_id = elem_dict.get("id")
+            elem_name = elem_dict.get("elem_name", "未知元素")
+
+            # 筛选 web 平台的定位符
+            web_locators = [loc for loc in locators if loc.get("platform") == "web"]
+
+            if not web_locators:
+                results.append({
+                    "element_id": elem_id,
+                    "element_name": elem_name,
+                    "status": "skip",
+                    "error": "无 web 平台定位符",
+                    "screenshot": None,
+                })
+                continue
+
+            # 按优先级排序，逐个验证
+            sorted_locs = sorted(web_locators, key=lambda x: x.get("priority", 99))
+            elem_passed = False
+            elem_error = None
+
+            for loc in sorted_locs:
+                loc_type = loc.get("locate_type", "css")
+                loc_value = loc.get("locate_value", "")
+                if not loc_value:
+                    continue
+
+                verify_result = await driver.verify_locator(loc_type, loc_value)
+                if verify_result["success"]:
+                    elem_passed = True
+                    break
+                else:
+                    err_msg = verify_result.get("error") or f"未找到元素(匹配数={verify_result.get('count', 0)})"
+                    elem_error = f"[{loc_type}] {err_msg}"
+
+            # 截图记录
+            screenshot_b64 = None
+            try:
+                screenshot_b64 = await driver.screenshot()
+            except Exception:
+                pass
+
+            if elem_passed:
+                passed += 1
+                results.append({
+                    "element_id": elem_id,
+                    "element_name": elem_name,
+                    "status": "pass",
+                    "error": None,
+                    "screenshot": screenshot_b64,
+                })
+                # 更新元素成功率
+                service.update_health_status(elem_id, True)
+            else:
+                failed += 1
+                results.append({
+                    "element_id": elem_id,
+                    "element_name": elem_name,
+                    "status": "fail",
+                    "error": elem_error,
+                    "screenshot": screenshot_b64,
+                })
+                service.update_health_status(elem_id, False)
+    except Exception as e:
+        return {"code": -1, "message": f"巡检执行异常: {str(e)}"}
+    finally:
+        await driver.close()
+
+    return {
+        "code": 0,
+        "data": {
+            "total": len(elements),
+            "passed": passed,
+            "failed": failed,
+            "results": results,
+        },
+    }
+
+
+@router.post("/verify", summary="验证单个元素定位符")
+async def verify_single_element(
+    elem_id: int,
+    db: Session = Depends(get_db),
+):
+    """@Function: 验证单个元素的所有 web 定位符"""
+    from app.driver.web_driver import WebDriver
+
     service = ElementService(db)
-    result = service.health_check(elem_ids, platform)
+    elem = service.get_element(elem_id)
+    if not elem:
+        raise HTTPException(status_code=404, detail="元素不存在")
+
+    elem_dict = elem.to_dict() if hasattr(elem, "to_dict") else elem
+    locators = elem_dict.get("locators", [])
+    web_locators = [loc for loc in locators if loc.get("platform") == "web"]
+
+    if not web_locators:
+        return {"code": 0, "data": {"status": "skip", "error": "无 web 平台定位符", "details": []}}
+
+    driver = WebDriver(headless=True, timeout=10000)
+    details = []
+    overall_pass = False
+
+    try:
+        await driver.launch()
+        await driver.navigate("about:blank")
+
+        sorted_locs = sorted(web_locators, key=lambda x: x.get("priority", 99))
+        for loc in sorted_locs:
+            loc_type = loc.get("locate_type", "css")
+            loc_value = loc.get("locate_value", "")
+            if not loc_value:
+                continue
+
+            verify_result = await driver.verify_locator(loc_type, loc_value)
+            details.append({
+                "locate_type": loc_type,
+                "locate_value": loc_value,
+                "priority": loc.get("priority", 99),
+                "success": verify_result["success"],
+                "count": verify_result["count"],
+                "error": verify_result["error"],
+            })
+            if verify_result["success"]:
+                overall_pass = True
+    except Exception as e:
+        return {"code": -1, "message": f"验证异常: {str(e)}"}
+    finally:
+        await driver.close()
+
+    # 更新健康状态
+    service.update_health_status(elem_id, overall_pass)
+
+    return {
+        "code": 0,
+        "data": {
+            "element_id": elem_id,
+            "element_name": elem_dict.get("elem_name"),
+            "status": "pass" if overall_pass else "fail",
+            "details": details,
+        },
+    }
     return {"code": 0, "data": result}
 
 

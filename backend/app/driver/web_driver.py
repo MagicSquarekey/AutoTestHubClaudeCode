@@ -230,8 +230,82 @@ class WebDriver:
         Args:
             seconds: 等待秒数
         """
-        await asyncio.sleep(seconds)
         logger.info(f"已等待 {seconds} 秒 / Waited {seconds}s")
+
+    async def verify_locator(
+        self, locate_type: str, locate_value: str, timeout: int = 5000
+    ) -> dict:
+        """@Function: 验证单个定位符是否有效 / Verify a single locator
+
+        Args:
+            locate_type: 定位类型 css/id/xpath/text/accessibility
+            locate_value: 定位表达式
+            timeout: 超时时间（毫秒）
+
+        Returns:
+            {"success": bool, "count": int, "error": str|None}
+        """
+        if not self._page:
+            return {"success": False, "count": 0, "error": "浏览器未启动"}
+
+        try:
+            locator = self._build_locator(locate_type, locate_value)
+            count = await locator.count()
+            return {"success": count > 0, "count": count, "error": None}
+        except Exception as e:
+            return {"success": False, "count": 0, "error": str(e)}
+
+    def _build_locator(self, locate_type: str, locate_value: str):
+        """@Function: 根据类型构建 Playwright Locator / Build Playwright Locator
+
+        Args:
+            locate_type: 定位类型 css/id/xpath/text/accessibility
+            locate_value: 定位表达式
+
+        Returns:
+            Playwright Locator 对象
+        """
+        if locate_type in ("css", "id"):
+            return self._page.locator(locate_value)
+        elif locate_type == "xpath":
+            return self._page.locator(f"xpath={locate_value}")
+        elif locate_type == "text":
+            return self._page.get_by_text(locate_value)
+        elif locate_type == "accessibility":
+            return self._page.get_by_role(locate_value)
+        else:
+            return self._page.locator(locate_value)
+
+    async def find_element_by_locators(
+        self, locators: list, timeout: int = 10000
+    ) -> Optional[object]:
+        """@Function: 按优先级尝试多个定位符查找元素 / Try locators by priority
+
+        Args:
+            locators: 定位符列表 [{"locate_type": "css", "locate_value": "#btn", "priority": 1}, ...]
+            timeout: 每个定位符的超时时间（毫秒）
+
+        Returns:
+            Playwright ElementHandle 或 None
+        """
+        sorted_locators = sorted(locators, key=lambda x: x.get("priority", 99))
+
+        for loc in sorted_locators:
+            try:
+                locator = self._build_locator(
+                    loc.get("locate_type", "css"),
+                    loc.get("locate_value", ""),
+                )
+                count = await locator.count()
+                if count > 0:
+                    return await locator.first.element_handle()
+            except Exception as e:
+                logger.debug(
+                    f"定位符 {loc.get('locate_type')}:{loc.get('locate_value')} 失败: {e}"
+                )
+                continue
+
+        return None
 
     async def close(self) -> None:
         """@Function: 关闭浏览器 / Close browser"""

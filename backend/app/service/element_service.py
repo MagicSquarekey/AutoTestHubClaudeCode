@@ -21,6 +21,32 @@ class ElementService:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_element(self, elem_id: int) -> Optional[TestElement]:
+        """@Function: 根据 ID 获取单个元素
+
+        Args:
+            elem_id: 元素 ID
+
+        Returns:
+            TestElement 对象或 None
+        """
+        return self.db.query(TestElement).filter(TestElement.id == elem_id).first()
+
+    def update_health_status(self, elem_id: int, is_healthy: bool) -> None:
+        """@Function: 更新元素健康状态
+
+        Args:
+            elem_id: 元素 ID
+            is_healthy: 是否健康
+        """
+        elem = self.get_element(elem_id)
+        if elem:
+            if is_healthy:
+                elem.success_count = (elem.success_count or 0) + 1
+            else:
+                elem.fail_count = (elem.fail_count or 0) + 1
+            self.db.commit()
+
     def get_element_list(
         self,
         module: Optional[str] = None,

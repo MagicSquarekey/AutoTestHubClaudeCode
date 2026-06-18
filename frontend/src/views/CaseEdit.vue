@@ -274,13 +274,19 @@ onMounted(async () => {
     await loadCase(id)
   }
 })
-
 const loadCase = async (id) => {
   try {
     const data = await caseApi.getDetail(id)
+    const steps = data.steps ? JSON.parse(data.steps) : []
+    // 为没有ID的步骤补生成唯一ID
+    steps.forEach((step, index) => {
+      if (!step.id) {
+        step.id = `step_loaded_${Date.now()}_${index}`
+      }
+    })
     formData.value = {
       ...data,
-      steps: data.steps ? JSON.parse(data.steps) : [],
+      steps,
     }
   } catch (error) {
     console.error('加载用例失败:', error)
@@ -520,6 +526,31 @@ const handleDebug = () => {
 .step-detail {
   margin-top: 8px;
   padding-left: 40px;
+}
+
+/* 修复长文本换行 / Fix long text wrapping */
+.step-item .step-info,
+.step-item .step-detail,
+.param-tag,
+.step-item .el-tag {
+  word-break: break-all;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.step-info {
+  overflow: hidden;
+}
+
+/* 防止文本被意外选中 / Prevent text selection */
+.step-item {
+  user-select: none;
+}
+
+.step-item .step-desc,
+.step-item .step-name,
+.param-tag {
+  user-select: text;
 }
 
 .param-tag {

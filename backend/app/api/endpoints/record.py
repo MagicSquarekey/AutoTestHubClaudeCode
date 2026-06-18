@@ -4,6 +4,7 @@
 @Function: 提供录制任务和步骤的 CRUD、录制控制、转换接口 / Provide CRUD, recording control, conversion endpoints
 """
 
+import json
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -341,8 +342,23 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
     case_steps = []
     for step in steps:
         action_type = step.get("action_type", "")
-        element_locators = step.get("element_locators", "{}")
+        element_locators_str = step.get("element_locators", "{}")
         input_value = step.get("input_value", "")
+
+        # 解析 element_locators 从 JSON 字符串到字典 / Parse element_locators from JSON string to dict
+        try:
+            element_locators = json.loads(element_locators_str) if isinstance(element_locators_str, str) else element_locators_str
+        except (json.JSONDecodeError, TypeError):
+            element_locators = {}
+
+        # 提取实际选择器值作为 element 参数 / Extract actual selector value as element param
+        element_value = ""
+        if element_locators:
+            # 取第一个非空的定位符值 / Take the first non-empty locator value
+            for loc_key, loc_val in element_locators.items():
+                if loc_val:
+                    element_value = loc_val
+                    break
 
         # 映射操作类型到关键字 / Map action type to keyword
         keyword_map = {
@@ -361,7 +377,7 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
         if keyword == "open_url":
             params = {"url": input_value}
         elif keyword in ["click", "hover", "select", "input_text"]:
-            params = {"element": element_locators}
+            params = {"element": element_value}
             if keyword == "input_text":
                 params["value"] = input_value
             elif keyword == "select":
@@ -383,7 +399,7 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
         "tags": convert.tags,
         "priority": convert.priority,
         "description": convert.description or f"从录制任务转换: {task.get('task_name', '')}",
-        "steps": str(case_steps),
+        "steps": json.dumps(case_steps, ensure_ascii=False),
         "platform": convert.platform,
     }
 

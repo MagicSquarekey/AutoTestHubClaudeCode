@@ -138,6 +138,7 @@
             ref="stepsTable"
             v-loading="stepsLoading"
             :data="stepsList"
+            row-key="id"
             stripe
             @selection-change="handleStepSelectionChange"
             class="steps-table"
@@ -868,5 +869,11 @@ function getActionTypeLabel(actionType) {
 
 .steps-table {
   width: 100%;
+}
+
+/* 修复长文本换行 / Fix long text wrapping */
+.record-page :deep(.el-table .cell) {
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 </style>

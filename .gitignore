@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -15,7 +15,7 @@ build/
 *.swo
 *~
 
-# VSCode（保留 .vscode/ 调试配置，排除个人设置）
+# VSCode锛堜繚鐣?.vscode/ 璋冭瘯閰嶇疆锛屾帓闄や釜浜鸿缃級
 .vscode/*
 !.vscode/launch.json
 !.vscode/settings.json
@@ -43,17 +43,19 @@ htmlcov/
 .env.local
 
 # ============================================
-# 私有文件（不上传到 GitHub）
+# 绉佹湁鏂囦欢锛堜笉涓婁紶鍒?GitHub锛?
 # ============================================
 
-# 私有目录
-private/
+# 绉佹湁鐩綍
+# private 文件夹（排除文件但保留文件夹结构）
+private/*
+!private/.gitkeep
 
-# 自动生成的报告
-*-报告*.md
-*-分析*.md
+# 鑷姩鐢熸垚鐨勬姤鍛?
+*-鎶ュ憡*.md
+*-鍒嗘瀽*.md
 
-# 临时文件
+# 涓存椂鏂囦欢
 *.tmp
 *.bak
 
@@ -61,25 +63,25 @@ private/
 .continue/
 
 # ============================================
-# AutoTest Hub 专用排除规则
+# AutoTest Hub 涓撶敤鎺掗櫎瑙勫垯
 # ============================================
 
-# 后端数据目录
+# 鍚庣鏁版嵁鐩綍
 backend/data/
 backend/logs/
 
-# 加密密钥
+# 鍔犲瘑瀵嗛挜
 .secret_key
 *.key
 
-# 备份文件
+# 澶囦唤鏂囦欢
 *.zip
 *.bak
 
-# 测试报告
+# 娴嬭瘯鎶ュ憡
 backend/data/reports/
 
-# 截图和录屏
+# 鎴浘鍜屽綍灞?
 backend/data/screenshots/
 
 # Node.js
@@ -92,7 +94,16 @@ yarn-error.log*
 frontend/dist/
 frontend/release/
 
-# 本地数据库
+# 鏈湴鏁版嵁搴?
 *.db
 *.db-journal
 *.db-wal
+
+.claude/tmp/
+
+# 排除系统自动生成的临时分析文件
+*-202*.md
+
+
+# 前端构建输出
+build_output.txt
