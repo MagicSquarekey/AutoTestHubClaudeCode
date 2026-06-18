@@ -5,6 +5,7 @@ Web 关键字实现 / Web keyword implementations
 """
 
 import os
+import time
 from typing import Dict, Any, Optional
 from app.driver.web_driver import WebDriver
 from app.core.config import settings
@@ -180,6 +181,72 @@ async def _wait_for_element(driver: WebDriver, params: Dict[str, Any], timeout: 
     await driver.wait_for_selector(element, timeout=timeout)
 
 
+async def _solve_captcha(driver: WebDriver, params: Dict[str, Any], timeout: int) -> str:
+    """@Function: 识别并输入验证码 / Recognize and input captcha
+    
+    流程：
+    1. 截图验证码图片
+    2. 使用 OCR 识别
+    3. 输入到验证码输入框
+    
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典
+            - captcha_selector: 验证码图片选择器 (默认: img.captcha)
+            - input_selector: 验证码输入框选择器 (默认: input[name='captcha'])
+            - expected_length: 期望验证码长度 (默认: 4)
+            - max_retries: 最大重试次数 (默认: 3)
+        timeout: 超时时间
+        
+    Returns:
+        识别出的验证码文本
+    """
+    from app.service.ocr_service import ocr_service
+    
+    # 获取参数
+    captcha_selector = params.get("captcha_selector", "img.captcha")
+    input_selector = params.get("input_selector", "input[name='captcha']")
+    expected_length = int(params.get("expected_length", 4))
+    max_retries = int(params.get("max_retries", 3))
+    
+    # 截图验证码
+    save_dir = settings.SCREENSHOT_DIR
+    filename = f"captcha_{int(time.time() * 1000)}.png"
+    screenshot_path = os.path.join(save_dir, filename)
+    
+    # 等待验证码图片加载
+    await driver.wait_for_selector(captcha_selector, timeout=5000)
+    
+    # 截图
+    element = driver.page.locator(captcha_selector)
+    await element.screenshot(path=screenshot_path)
+    
+    logger.info(f"验证码截图已保存: {screenshot_path}")
+    
+    try:
+        # OCR 识别
+        captcha_text = ocr_service.recognize_with_retry(
+            screenshot_path,
+            max_retries=max_retries,
+            expected_length=expected_length
+        )
+        
+        if not captcha_text:
+            raise RuntimeError("验证码识别失败")
+        
+        logger.info(f"验证码识别成功: {captcha_text}")
+        
+        # 输入验证码
+        await driver.page.fill(input_selector, captcha_text)
+        
+        return captcha_text
+        
+    finally:
+        # 清理临时文件
+        if os.path.exists(screenshot_path):
+            os.remove(screenshot_path)
+
+
 # ========== 关键字映射表 / Keyword mapping ==========
 
 KEYWORD_MAP = {
@@ -200,4 +267,5 @@ KEYWORD_MAP = {
     "assert_url": _assert_url,
     "assert_title": _assert_title,
     "wait_for_element": _wait_for_element,
+    "solve_captcha": _solve_captcha,
 }
