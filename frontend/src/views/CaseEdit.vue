@@ -163,17 +163,12 @@
             <el-form-item label="步骤名称">
               <el-input v-model="activeStep.name" placeholder="输入步骤名称" />
             </el-form-item>
-            <el-form-item label="关联元素">
-              <el-select
+            <el-form-item label="关联元素" v-if="['click', 'input_text', 'clear_input', 'hover', 'select', 'upload_file', 'wait_for_element', 'assert_element_exists'].includes(activeStep.keyword)">
+              <el-input
                 v-model="activeStep.params.element"
-                placeholder="选择元素"
-                filterable
+                placeholder="输入CSS选择器"
                 clearable
-                style="width: 100%"
-              >
-                <el-option label="元素1" value="elem1" />
-                <el-option label="元素2" value="elem2" />
-              </el-select>
+              />
             </el-form-item>
             <el-form-item label="输入值" v-if="['input_text', 'set_value'].includes(activeStep.keyword)">
               <el-input v-model="activeStep.params.value" placeholder="输入值" />
@@ -184,6 +179,28 @@
             <el-form-item label="等待时间(秒)" v-if="activeStep.keyword === 'wait'">
               <el-input-number v-model="activeStep.params.timeout" :min="1" :max="60" />
             </el-form-item>
+            <!-- 验证码识别参数配置 -->
+            <template v-if="activeStep.keyword === 'solve_captcha'">
+              <el-form-item label="验证码图片选择器">
+                <el-input v-model="activeStep.params.captcha_selector" placeholder="如: img.captcha" />
+              </el-form-item>
+              <el-form-item label="验证码输入框选择器">
+                <el-input v-model="activeStep.params.input_selector" placeholder="如: input[name='captcha']" />
+              </el-form-item>
+              <el-form-item label="验证码长度">
+                <el-input-number v-model="activeStep.params.expected_length" :min="1" :max="10" />
+              </el-form-item>
+              <el-form-item label="最大重试次数">
+                <el-input-number v-model="activeStep.params.max_retries" :min="1" :max="10" />
+              </el-form-item>
+              <el-form-item label="识别失败策略">
+                <el-select v-model="activeStep.params.on_fail" style="width: 100%">
+                  <el-option label="终止用例" value="stop" />
+                  <el-option label="跳过继续" value="skip" />
+                  <el-option label="人工介入" value="manual" />
+                </el-select>
+              </el-form-item>
+            </template>
             <el-form-item label="超时时间(秒)">
               <el-input-number v-model="activeStep.timeout" :min="1" :max="120" :default="30" />
             </el-form-item>
@@ -205,15 +222,106 @@
         <el-empty v-else description="选择步骤进行编辑" />
       </el-card>
     </div>
+
+    <!-- 调试运行对话框 / Debug run dialog -->
+    <el-dialog
+      v-model="debugDialogVisible"
+      title="调试运行"
+      width="700px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="debugRunning ? false : true"
+    >
+      <div class="debug-content">
+        <!-- 进度条 / Progress bar -->
+        <div class="debug-progress" v-if="debugRunning && !waitingCaptcha">
+          <el-progress
+            :percentage="debugTotalSteps > 0 ? Math.round((debugCurrentStep / debugTotalSteps) * 100) : 0"
+            :format="() => `${debugCurrentStep}/${debugTotalSteps}`"
+          />
+          <div class="debug-status">正在执行步骤 {{ debugCurrentStep }}/{{ debugTotalSteps }}...</div>
+        </div>
+
+        <!-- 人工输入验证码区域 / Manual captcha input area -->
+        <div class="captcha-manual-input" v-if="waitingCaptcha">
+          <el-alert
+            title="验证码识别失败，请手动输入"
+            type="warning"
+            description="OCR 自动识别未能成功，请查看下方验证码图片并手动输入"
+            show-icon
+            :closable="false"
+            style="margin-bottom: 16px"
+          />
+          <div class="captcha-preview">
+            <div class="captcha-label">验证码图片：</div>
+            <img
+              v-if="captchaScreenshot"
+              :src="`data:image/png;base64,${captchaScreenshot}`"
+              class="captcha-image"
+              alt="验证码"
+            />
+            <div v-else class="captcha-loading">加载中...</div>
+          </div>
+          <div class="captcha-input-area">
+            <el-input
+              v-model="manualCaptchaText"
+              placeholder="请输入验证码"
+              clearable
+              @keyup.enter="handleSubmitCaptcha"
+              style="width: 200px"
+            />
+            <el-button type="primary" @click="handleSubmitCaptcha" :loading="submittingCaptcha">
+              提交
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 完成状态 / Completion status -->
+        <div class="debug-complete" v-else-if="debugResults.length > 0">
+          <el-alert
+            :title="debugError ? '执行失败' : '执行完成'"
+            :type="debugError ? 'error' : 'success'"
+            :description="debugError || `共执行 ${debugResults.length} 个步骤`"
+            show-icon
+            :closable="false"
+          />
+        </div>
+
+        <!-- 执行结果列表 / Result list -->
+        <div class="debug-results">
+          <el-table :data="debugResults" stripe size="small" max-height="400">
+            <el-table-column type="index" label="序号" width="60" />
+            <el-table-column prop="keyword" label="关键字" width="120" />
+            <el-table-column prop="message" label="执行结果" show-overflow-tooltip />
+            <el-table-column prop="duration" label="耗时(秒)" width="80" />
+            <el-table-column label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+                  {{ row.success ? '成功' : '失败' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button v-if="debugRunning" type="danger" @click="handleStopDebug">停止运行</el-button>
+          <el-button v-else @click="debugDialogVisible = false">关闭</el-button>
+          <el-button v-if="!debugRunning && debugResults.length > 0" type="primary" @click="handleDebug">重新运行</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, Search, Plus, Delete, Top, Bottom, CopyDocument, Sort } from '@element-plus/icons-vue'
-import { caseApi } from '@/api'
+import { caseApi, debugApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -236,10 +344,27 @@ const activeStep = computed(() => {
   return formData.value.steps.find(s => s.id === activeStepId.value)
 })
 
+// 调试运行状态变量
+const debugDialogVisible = ref(false)
+const debugRunning = ref(false)
+const debugTaskId = ref(null)
+const debugCurrentStep = ref(0)
+const debugTotalSteps = ref(0)
+const debugResults = ref([])
+const debugError = ref(null)
+const debugPollingTimer = ref(null)
+
+// 验证码人工输入相关状态
+const waitingCaptcha = ref(false)
+const captchaScreenshot = ref(null)
+const manualCaptchaText = ref('')
+const submittingCaptcha = ref(false)
+
 // 关键字库
 const commonKeywords = [
   { name: '打开URL', keyword: 'open_url', icon: 'Link', params: { url: '' } },
   { name: '等待', keyword: 'wait', icon: 'Timer', params: { timeout: 5 } },
+  { name: '等待元素', keyword: 'wait_for_element', icon: 'Timer', params: { element: '' } },
   { name: '截图', keyword: 'screenshot', icon: 'Camera', params: {} },
   { name: '执行JS', keyword: 'execute_js', icon: 'Document', params: { script: '' } },
 ]
@@ -253,6 +378,7 @@ const webKeywords = [
   { name: '上传文件', keyword: 'upload_file', icon: 'Upload', params: { element: '', file_path: '' } },
   { name: '切换iframe', keyword: 'switch_iframe', icon: 'Switch', params: { iframe: '' } },
   { name: '切换窗口', keyword: 'switch_window', icon: 'Monitor', params: { window_index: 0 } },
+  { name: '识别验证码', keyword: 'solve_captcha', icon: 'Key', params: { captcha_selector: 'img.captcha', input_selector: "input[name='captcha']", expected_length: 4, max_retries: 3 } },
 ]
 
 const assertKeywords = [
@@ -385,9 +511,130 @@ const handleSave = async () => {
   }
 }
 
-const handleDebug = () => {
-  ElMessage.info('调试运行功能开发中')
+// 调试运行相关函数 / Debug run functions
+const handleDebug = async () => {
+  if (!route.params.id) {
+    ElMessage.warning('请先保存用例')
+    return
+  }
+
+  if (formData.value.steps.length === 0) {
+    ElMessage.warning('请先添加测试步骤')
+    return
+  }
+
+  // 重置状态
+  debugRunning.value = true
+  debugResults.value = []
+  debugError.value = null
+  debugCurrentStep.value = 0
+  debugTotalSteps.value = formData.value.steps.length
+  debugDialogVisible.value = true
+
+  try {
+    const res = await debugApi.startDebug({
+      case_id: parseInt(route.params.id),
+      browser_type: 'chromium',
+      headless: false,
+      timeout: 30,
+    })
+    debugTaskId.value = res.task_id
+    // 开始轮询状态
+    startDebugPolling()
+  } catch (error) {
+    console.error('启动调试失败:', error)
+    debugRunning.value = false
+    debugError.value = error.message || '启动调试失败'
+  }
 }
+
+const startDebugPolling = () => {
+  if (debugPollingTimer.value) {
+    clearInterval(debugPollingTimer.value)
+  }
+  debugPollingTimer.value = setInterval(async () => {
+    if (!debugTaskId.value) return
+
+    try {
+      const res = await debugApi.getDebugStatus(debugTaskId.value)
+      debugCurrentStep.value = res.current_step
+      debugResults.value = res.results || []
+
+      // 检测是否需要人工输入验证码
+      if (res.waiting_captcha && res.captcha_screenshot) {
+        waitingCaptcha.value = true
+        captchaScreenshot.value = res.captcha_screenshot
+        // 不停止轮询，继续等待用户输入
+      } else if (!res.waiting_captcha) {
+        // 如果不再等待验证码，清除状态
+        if (waitingCaptcha.value) {
+          waitingCaptcha.value = false
+          captchaScreenshot.value = null
+          manualCaptchaText.value = ''
+        }
+      }
+
+      if (res.status === 'completed' || res.status === 'failed' || res.status === 'stopped') {
+        debugRunning.value = false
+        waitingCaptcha.value = false
+        if (res.error) {
+          debugError.value = res.error
+        }
+        stopDebugPolling()
+      }
+    } catch (error) {
+      console.error('获取调试状态失败:', error)
+    }
+  }, 1000)
+}
+
+const stopDebugPolling = () => {
+  if (debugPollingTimer.value) {
+    clearInterval(debugPollingTimer.value)
+    debugPollingTimer.value = null
+  }
+}
+
+const handleStopDebug = async () => {
+  if (debugTaskId.value) {
+    try {
+      await debugApi.stopDebug(debugTaskId.value)
+      debugRunning.value = false
+      waitingCaptcha.value = false
+      stopDebugPolling()
+    } catch (error) {
+      console.error('停止调试失败:', error)
+    }
+  }
+}
+
+// 提交人工验证码
+const handleSubmitCaptcha = async () => {
+  if (!manualCaptchaText.value || !manualCaptchaText.value.trim()) {
+    ElMessage.warning('请输入验证码')
+    return
+  }
+
+  submittingCaptcha.value = true
+  try {
+    await debugApi.submitCaptcha(debugTaskId.value, manualCaptchaText.value.trim())
+    ElMessage.success('验证码已提交')
+    // 清除输入状态
+    waitingCaptcha.value = false
+    captchaScreenshot.value = null
+    manualCaptchaText.value = ''
+  } catch (error) {
+    console.error('提交验证码失败:', error)
+    ElMessage.error('提交验证码失败: ' + (error.message || '未知错误'))
+  } finally {
+    submittingCaptcha.value = false
+  }
+}
+
+// 组件卸载时清理轮询
+onUnmounted(() => {
+  stopDebugPolling()
+})
 </script>
 
 <style scoped>
@@ -561,6 +808,76 @@ const handleDebug = () => {
 .param-panel {
   width: 280px;
   overflow-y: auto;
+}
+
+/* 调试运行对话框样式 / Debug dialog styles */
+.debug-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.debug-progress {
+  text-align: center;
+}
+
+.debug-status {
+  margin-top: 12px;
+  color: #606266;
+  font-size: 14px;
+}
+
+.debug-complete {
+  margin-bottom: 16px;
+}
+
+.debug-results {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 验证码人工输入样式 / Manual captcha input styles */
+.captcha-manual-input {
+  padding: 16px;
+  background-color: #fdf6ec;
+  border-radius: 8px;
+  border: 1px solid #e6a23c;
+}
+
+.captcha-preview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.captcha-label {
+  font-weight: 500;
+  color: #606266;
+}
+
+.captcha-image {
+  max-width: 200px;
+  max-height: 80px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+
+.captcha-loading {
+  color: #909399;
+  font-size: 14px;
+}
+
+.captcha-input-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 </style>
 

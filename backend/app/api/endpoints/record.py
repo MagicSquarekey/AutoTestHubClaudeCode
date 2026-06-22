@@ -5,6 +5,7 @@
 """
 
 import json
+import re
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -18,6 +19,78 @@ from app.utils.logger import get_logger
 logger = get_logger("record_api")
 
 router = APIRouter()
+
+# 动态类名模式 / Dynamic class patterns
+DYNAMIC_CLASS_PATTERNS = [
+    'focused', 'active', 'hover', 'disabled', 'selected', 'checked',
+    'open', 'visible', 'hidden', 'loading', 'error', 'success', 'warning',
+    'ant-motion', 'fade-', 'slide-', 'move-', 'ant-input-affix-wrapper-focused'
+]
+
+
+def clean_css_selector(css: str) -> str:
+    """@Function: 清理CSS选择器，移除动态类名 / Clean CSS selector by removing dynamic classes"""
+    if not css:
+        return css
+    # 移除包含动态类名的部分 / Remove parts containing dynamic class names
+    for pattern in DYNAMIC_CLASS_PATTERNS:
+        css = re.sub(r'\.' + re.escape(pattern) + r'[a-zA-Z0-9_-]*', '', css)
+    # 清理多余的空格和 > 之间的空格 / Clean up extra spaces
+    css = re.sub(r'\s+', ' ', css).strip()
+    css = re.sub(r'\s*>\s*', ' > ', css)
+    return css
+
+
+def _simplify_css_selector(css: str) -> str:
+    """@Function: Simplify complex CSS selector, extract most stable parts"""
+    if not css:
+        return css
+    
+    css = clean_css_selector(css)
+    
+    # Try to extract input element selector
+    input_match = re.search(r'(input\[.*?\]|input\.[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)', css)
+    if input_match:
+        input_selector = input_match.group(0)
+        
+        # Try to extract more stable selector from parent
+        placeholder_match = re.search(r"placeholder\s*=\s*['\"]([^'\"]+)['\"]", css)
+        if placeholder_match:
+            return f'input[placeholder="{placeholder_match.group(1)}"]'
+        
+        name_match = re.search(r"name\s*=\s*['\"]([^'\"]+)['\"]", css)
+        if name_match:
+            return f'input[name="{name_match.group(1)}"]'
+        
+        type_match = re.search(r"type\s*=\s*['\"]([^'\"]+)['\"]", css)
+        if type_match:
+            return f'input[type="{type_match.group(1)}"]'
+        
+        # Look for stable class names in parent (e.g. ant-input-password)
+        password_match = re.search(r'(ant-input-password|has-border)', css)
+        if password_match:
+            return f'span.{password_match.group(1)} input'
+        
+        # If input selector is simple enough, return it directly
+        if len(input_selector) < 50:
+            return input_selector
+    
+    # For button elements
+    button_match = re.search(r'(button\[.*?\]|button\.[a-zA-Z0-9_-]+)', css)
+    if button_match:
+        button_selector = button_match.group(0)
+        text_match = re.search(r":has-text\(['\"]([^'\"]+)['\"]\)", css)
+        if text_match:
+            return f'button:has-text("{text_match.group(1)}")'
+        if len(button_selector) < 50:
+            return button_selector
+    
+    # If cannot simplify, truncate overly long paths - keep only last 3 levels
+    parts = css.split(' > ')
+    if len(parts) > 3:
+        return ' > '.join(parts[-3:])
+    
+    return css
 
 
 # ==================== 请求模型 / Request Models ====================
@@ -352,12 +425,39 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
             element_locators = {}
 
         # 提取实际选择器值作为 element 参数 / Extract actual selector value as element param
+        # 优先使用语义化选择器（更稳定），而非复杂 CSS 路径 / Prefer semantic selectors over complex CSS paths
+        # 提取实际选择器值作为 element 参数
+        # 优先使用语义化选择器（更稳定），而非复杂 CSS 路径
         element_value = ""
         if element_locators:
-            # 取第一个非空的定位符值 / Take the first non-empty locator value
-            for loc_key, loc_val in element_locators.items():
-                if loc_val:
+            for preferred_key in ["placeholder", "name", "id", "data-testid", "type", "aria-label", "xpath", "css"]:
+                loc_val = element_locators.get(preferred_key, "")
+                if not loc_val:
+                    continue
+                # 将语义化属性值包装为有效的 CSS 选择器
+                if preferred_key == "placeholder":
+                    element_value = f'input[placeholder="{loc_val}"]'
+                    break
+                elif preferred_key == "name":
+                    element_value = f'[name="{loc_val}"]'
+                    break
+                elif preferred_key == "id":
+                    element_value = f'#{loc_val}'
+                    break
+                elif preferred_key == "data-testid":
+                    element_value = f'[data-testid="{loc_val}"]'
+                    break
+                elif preferred_key == "type":
+                    element_value = f'input[type="{loc_val}"]'
+                    break
+                elif preferred_key == "aria-label":
+                    element_value = f'[aria-label="{loc_val}"]'
+                    break
+                elif preferred_key == "xpath":
                     element_value = loc_val
+                    break
+                elif preferred_key == "css":
+                    element_value = _simplify_css_selector(loc_val)
                     break
 
         # 映射操作类型到关键字 / Map action type to keyword
@@ -368,13 +468,26 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
             "select": "select",
             "hover": "hover",
             "wait": "wait",
-            "keyboard": "execute_js",
+            "keyboard": "skip",  # 键盘操作跳过 / Skip keyboard actions
         }
         keyword = keyword_map.get(action_type, action_type)
+
+        # 跳过不需要的操作 / Skip unnecessary actions
+        if keyword == "skip":
+            continue
 
         # 构建步骤参数 / Build step params
         params = {}
         if keyword == "open_url":
+            # 过滤掉登录后的导航步骤（如跳转到 dashboard）/ Filter out post-login navigation
+            if input_value and ("cockpit" in input_value or "dashboard" in input_value or "home" in input_value):
+                # 检查是否是第一个 navigate 步骤 / Check if this is the first navigate step
+                has_form_action = any(
+                    s.get("action_type") in ["click", "input"] 
+                    for s in steps[:steps.index(step)]
+                )
+                if has_form_action:
+                    continue  # 跳过表单提交后的导航 / Skip navigation after form submission
             params = {"url": input_value}
         elif keyword in ["click", "hover", "select", "input_text"]:
             params = {"element": element_value}

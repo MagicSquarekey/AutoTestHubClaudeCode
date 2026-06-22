@@ -105,8 +105,10 @@ EVENT_LISTENER_SCRIPT = """
             }
 
             if (current.className && typeof current.className === 'string') {
+                // 过滤动态类名（状态类、动画类等）/ Filter dynamic classes (state, animation, etc.)
+                const dynamicPatterns = ['focused', 'active', 'hover', 'disabled', 'selected', 'checked', 'open', 'visible', 'hidden', 'loading', 'error', 'success', 'warning', 'ant-motion', 'fade-', 'slide-', 'move-'];
                 const classes = current.className.trim().split(/\\s+/)
-                    .filter(c => c && !c.includes('--'))
+                    .filter(c => c && !c.includes('--') && !dynamicPatterns.some(p => c.includes(p)))
                     .slice(0, 2)
                     .map(c => '.' + CSS.escape(c));
                 if (classes.length) {
@@ -510,9 +512,16 @@ class RecordingEngine:
                     )
 
                     for action in new_actions:
-                        # 截图
-                        screenshot_path = await self._take_screenshot(action.get("action_type", "unknown"))
-                        action["screenshot"] = screenshot_path
+                        # 只为关键操作截图，跳过 input/keyboard 避免屏幕闪烁
+                        # Only screenshot for key actions, skip input/keyboard to avoid screen flicker
+                        action_type = action.get("action_type", "unknown")
+                        if action_type in ("navigate", "click"):
+                            screenshot_path = await self._take_screenshot(action_type)
+                            action["screenshot"] = screenshot_path
+                        else:
+                            # input/keyboard 等事件不截图，使用空路径
+                            # Don't screenshot for input/keyboard events
+                            action["screenshot"] = ""
 
                         # 添加到录制列表
                         self._recorded_actions.append(action)

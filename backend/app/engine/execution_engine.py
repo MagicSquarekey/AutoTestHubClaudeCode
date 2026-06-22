@@ -5,8 +5,9 @@
 """
 
 import asyncio
+import base64
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable, Awaitable
 from app.driver.web_driver import WebDriver
 from plugins.keywords.web_keywords import execute_keyword, KEYWORD_MAP
 from app.core.config import settings
@@ -16,7 +17,10 @@ logger = get_logger("engine")
 
 
 class ExecutionEngine:
-    """执行引擎类 / Execution engine class"""
+    """执行引擎类 / Execution engine class
+
+    支持暂停/恢复能力，用于人工介入场景（如验证码识别失败时等待用户手动输入）
+    """
 
     def __init__(
         self,
@@ -38,6 +42,109 @@ class ExecutionEngine:
         self._headless = headless
         self._timeout = timeout
         self._driver: Optional[WebDriver] = None
+
+        # 暂停/恢复支持 / Pause/resume support
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # 初始状态：未暂停
+        self._manual_input_callback: Optional[Callable[..., Awaitable[str]]] = None
+        self._pending_manual_input: Optional[Dict[str, Any]] = None
+
+    def set_manual_input_callback(self, callback: Callable[..., Awaitable[str]]) -> None:
+        """@Function: 设置人工介入回调 / Set manual input callback
+
+        Args:
+            callback: 异步回调函数，接收参数 (screenshot_base64, captcha_selector, input_selector)
+                      返回用户输入的验证码文本
+        """
+        self._manual_input_callback = callback
+
+    async def pause_for_manual_input(
+        self,
+        screenshot_path: str,
+        captcha_selector: str,
+        input_selector: str,
+        task_id: Optional[int] = None,
+    ) -> str:
+        """@Function: 暂停执行等待人工输入 / Pause execution for manual input
+
+        Args:
+            screenshot_path: 验证码截图路径
+            captcha_selector: 验证码图片选择器
+            input_selector: 验证码输入框选择器
+            task_id: 调试任务ID（用于前端推送）
+
+        Returns:
+            用户手动输入的验证码文本
+        """
+        logger.info("[ExecutionEngine] 暂停执行，等待人工输入验证码...")
+
+        # 读取截图并转为 base64
+        with open(screenshot_path, "rb") as f:
+            screenshot_base64 = base64.b64encode(f.read()).decode("utf-8")
+
+        # 存储待处理的人工输入请求
+        self._pending_manual_input = {
+            "screenshot_base64": screenshot_base64,
+            "captcha_selector": captcha_selector,
+            "input_selector": input_selector,
+            "task_id": task_id,
+            "event": asyncio.Event(),
+            "result": None,
+        }
+
+        # 暂停执行
+        self._pause_event.clear()
+
+        # 通知前端（如果有回调）
+        if self._manual_input_callback:
+            try:
+                await self._manual_input_callback(
+                    screenshot_base64=screenshot_base64,
+                    captcha_selector=captcha_selector,
+                    input_selector=input_selector,
+                    task_id=task_id,
+                )
+            except Exception as e:
+                logger.warning(f"[ExecutionEngine] 通知前端失败: {e}")
+
+        # 等待用户输入
+        logger.info("[ExecutionEngine] 等待用户输入验证码...")
+        await self._pending_manual_input["event"].wait()
+
+        # 获取用户输入
+        user_input = self._pending_manual_input.get("result", "")
+        self._pending_manual_input = None
+
+        # 恢复执行
+        self._pause_event.set()
+        logger.info(f"[ExecutionEngine] 收到用户输入: {user_input}，继续执行")
+
+        return user_input
+
+    def submit_manual_input(self, captcha_text: str) -> bool:
+        """@Function: 提交人工输入的验证码 / Submit manually entered captcha
+
+        Args:
+            captcha_text: 用户输入的验证码文本
+
+        Returns:
+            是否提交成功
+        """
+        if self._pending_manual_input and not self._pending_manual_input["event"].is_set():
+            self._pending_manual_input["result"] = captcha_text
+            self._pending_manual_input["event"].set()
+            return True
+        return False
+
+    @property
+    def is_paused(self) -> bool:
+        """是否处于暂停状态 / Whether engine is paused"""
+        return not self._pause_event.is_set()
+
+    @property
+    def pending_manual_input(self) -> Optional[Dict[str, Any]]:
+        """获取待处理的人工输入请求 / Get pending manual input request"""
+        return self._pending_manual_input
 
     async def start(self) -> None:
         """@Function: 启动执行引擎（初始化驱动）/ Start engine (initialize driver)"""
@@ -68,9 +175,17 @@ class ExecutionEngine:
                 "duration": 0,
             }
 
+        # 等待暂停恢复（如果处于暂停状态）
+        await self._pause_event.wait()
+
         keyword = step.get("keyword", "")
-        params = step.get("params", {})
+        params = dict(step.get("params", {}))  # 复制 params 避免污染原始数据
         step_timeout = step.get("timeout", 30) * 1000  # 秒转毫秒
+
+        # 为 solve_captcha 关键字自动注入 engine 和 task_id（人工介入时需要）
+        if keyword == "solve_captcha":
+            params["engine"] = self
+            params["task_id"] = step.get("_task_id")
 
         start_time = time.time()
 
@@ -102,6 +217,12 @@ class ExecutionEngine:
 
     async def stop(self) -> None:
         """@Function: 停止执行引擎（关闭驱动）/ Stop engine (close driver)"""
+        # 如果正在暂停等待人工输入，先恢复
+        if self._pending_manual_input and not self._pending_manual_input["event"].is_set():
+            self._pending_manual_input["result"] = ""
+            self._pending_manual_input["event"].set()
+        self._pause_event.set()
+
         if self._driver:
             await self._driver.close()
             self._driver = None

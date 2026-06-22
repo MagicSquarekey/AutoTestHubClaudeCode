@@ -189,3 +189,16 @@ export const recordApi = {
 }
 
 export default api
+
+// ==================== 调试运行 API / Debug Run API ====================
+export const debugApi = {
+  // 启动调试运行 / Start debug run
+  startDebug: (data) => api.post('/debug/run', data),
+  // 获取调试状态 / Get debug status
+  getDebugStatus: (taskId) => api.get(`/debug/status/${taskId}`),
+  // 停止调试 / Stop debug
+  stopDebug: (taskId) => api.post(`/debug/stop/${taskId}`),
+  // 提交人工验证码 / Submit manual captcha
+  submitCaptcha: (taskId, captchaText) => api.post(`/debug/captcha/${taskId}`, { captcha_text: captchaText }),
+}
+

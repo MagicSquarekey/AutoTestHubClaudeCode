@@ -27,8 +27,11 @@ playwright==1.40.0
 appium-python-client==3.1.0
 
 # OCR（验证码识别 / Captcha Recognition）
+# 主选 PaddleOCR / Primary: PaddleOCR
 paddlepaddle==2.5.2
 paddleocr==2.7.0
+# 备选 EasyOCR / Fallback: EasyOCR
+easyocr==1.7.2
 
 # 图像处理 / Image Processing（OCR预处理）
 opencv-python==4.8.1.78

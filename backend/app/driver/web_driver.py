@@ -230,6 +230,7 @@ class WebDriver:
         Args:
             seconds: 等待秒数
         """
+        await asyncio.sleep(seconds)
         logger.info(f"已等待 {seconds} 秒 / Waited {seconds}s")
 
     async def verify_locator(

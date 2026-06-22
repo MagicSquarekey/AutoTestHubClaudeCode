@@ -93,10 +93,11 @@ class RecordingManager:
             await engine.launch()
             logger.info(f"录制任务 {task_id} 浏览器启动成功")
 
-            # 浏览器启动成功后，将引擎加入字典并清除启动标记
-            # Add engine to dict and clear starting flag after browser launched
+            # 浏览器启动成功后，将引擎加入字典
+            # Add engine to dict after browser launched
+            # 注意：不要立即从 _starting_tasks 移除，等 start_recording 完成后再移除
+            # Note: Don't remove from _starting_tasks yet, wait until start_recording completes
             self._engines[task_id] = engine
-            self._starting_tasks.discard(task_id)
 
             # 设置操作回调
             async def on_action(action):
@@ -128,6 +129,9 @@ class RecordingManager:
             # 开始录制
             logger.info(f"录制任务 {task_id} 开始录制，目标URL: {target_url}")
             await engine.start_recording(target_url)
+            # 录制启动成功后，清除启动标记
+            # Clear starting flag after recording starts successfully
+            self._starting_tasks.discard(task_id)
             logger.info(f"录制任务 {task_id} 录制已启动")
 
             # 保持浏览器打开，直到录制停止
