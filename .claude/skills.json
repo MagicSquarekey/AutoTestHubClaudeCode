@@ -1,3 +1,11 @@
-﻿{
-    "temp-tasks":  "临时任务管理（方案执行 + 脚本管理）"
+{
+    "auto-review": "自动代码审查",
+    "bilingual-comments": "中英文双语注释规范",
+    "code-gen": "代码生成",
+    "dep-check": "依赖检查",
+    "doc-gen": "文档生成",
+    "error-recovery": "错误恢复",
+    "human-escalation": "人工升级",
+    "temp-files-management": "临时文件管理",
+    "temp-tasks": "临时任务管理（方案执行 + 脚本管理）"
 }
