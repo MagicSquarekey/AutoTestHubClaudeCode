@@ -499,9 +499,102 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
     if not steps:
         return {"code": 1, "message": "录制任务没有步骤，无法转换"}
 
+    # 智能检测验证码相关步骤 / Smart detect captcha-related steps
+    captcha_step_indices = set()
+    captcha_insert_index = -1  # 记录插入 solve_captcha 的位置 / Track where to insert solve_captcha
+    captcha_params = {}  # 记录验证码相关的参数 / Track captcha-related params
+
+    for i, step in enumerate(steps):
+        action_type = step.get("action_type", "")
+        element_locators_str = step.get("element_locators", "{}")
+        input_value = step.get("input_value", "")
+
+        try:
+            element_locators = json.loads(element_locators_str) if isinstance(element_locators_str, str) else element_locators_str
+        except (json.JSONDecodeError, TypeError):
+            element_locators = {}
+
+        # 检测验证码输入框的 input 操作 / Detect captcha input field operations
+        placeholder = element_locators.get("placeholder", "")
+        name = element_locators.get("name", "")
+        is_captcha_input = False
+
+        # 通过 placeholder 或 name 判断是否是验证码输入框
+        captcha_keywords = ["验证码", "captcha", "verify", "code", "yzm"]
+        if action_type == "input":
+            if any(kw in placeholder.lower() for kw in captcha_keywords) or \
+               any(kw in name.lower() for kw in captcha_keywords):
+                is_captcha_input = True
+
+        # 如果是验证码输入框的 input，标记后续的 Enter 和登录按钮点击
+        if is_captcha_input:
+            captcha_step_indices.add(i)
+            captcha_insert_index = i  # 在验证码输入步骤的位置插入 solve_captcha
+            logger.info(f"检测到验证码输入步骤 {i+1}: placeholder={placeholder}")
+
+            # 记录验证码输入框的选择器信息
+            captcha_params["input_placeholder"] = placeholder
+            captcha_params["input_name"] = name
+
+            # 查找后续的 Enter 键盘操作和登录按钮点击
+            for j in range(i + 1, min(i + 4, len(steps))):
+                next_step = steps[j]
+                next_action = next_step.get("action_type", "")
+                next_value = next_step.get("input_value", "")
+                next_locators_str = next_step.get("element_locators", "{}")
+
+                try:
+                    next_locators = json.loads(next_locators_str) if isinstance(next_locators_str, str) else next_locators_str
+                except (json.JSONDecodeError, TypeError):
+                    next_locators = {}
+
+                # 检测 Enter 键盘操作
+                if next_action == "keyboard" and next_value == "Enter":
+                    captcha_step_indices.add(j)
+                    logger.info(f"检测到验证码后的 Enter 操作 {j+1}")
+
+                # 检测登录按钮点击
+                if next_action == "click":
+                    next_text = next_locators.get("text", "")
+                    next_tag = next_locators.get("tag", "")
+                    # 登录按钮通常包含"登录"、"login"、"sign in"等文字
+                    login_keywords = ["登录", "登 录", "login", "sign in", "submit"]
+                    if next_tag == "button" and any(kw in next_text.lower() for kw in login_keywords):
+                        captcha_step_indices.add(j)
+                        captcha_params["login_button_text"] = next_text
+                        logger.info(f"检测到验证码后的登录按钮点击 {j+1}: text={next_text}")
+
     # 转换步骤格式 / Convert step format
     case_steps = []
-    for step in steps:
+    solve_captcha_inserted = False
+    for step_index, step in enumerate(steps):
+        # 在验证码输入步骤的位置插入 solve_captcha / Insert solve_captcha at captcha input position
+        if step_index == captcha_insert_index and not solve_captcha_inserted:
+            # 插入识别验证码关键字（参数与左侧拖出的"识别验证码"一致）
+            solve_captcha_step = {
+                "keyword": "solve_captcha",
+                "params": {
+                    "captcha_selector": "",
+                    "input_selector": "",
+                    "expected_length": 4,
+                    "max_retries": 3,
+                    "on_fail": "manual",
+                    "login_button_selector": "",
+                    "dismiss_button_selector": "",
+                    "max_login_retries": 3,
+                    "login_wait_ms": 3000,
+                },
+                "order": step.get("step_order", 0),
+            }
+            case_steps.append(solve_captcha_step)
+            solve_captcha_inserted = True
+            logger.info(f"已在步骤 {step_index + 1} 位置插入 solve_captcha 关键字")
+
+        # 跳过检测到的验证码相关步骤 / Skip detected captcha-related steps
+        if step_index in captcha_step_indices:
+            logger.info(f"跳过验证码相关步骤 {step_index + 1}: {step.get('action_type')}")
+            continue
+
         action_type = step.get("action_type", "")
         element_locators_str = step.get("element_locators", "{}")
         input_value = step.get("input_value", "")
@@ -564,6 +657,7 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
             "hover": "hover",
             "wait": "wait",
             "keyboard": "skip",  # 键盘操作跳过 / Skip keyboard actions
+            "switch_tab": "switch_tab",  # 切换标签页 / Switch tab
         }
         keyword = keyword_map.get(action_type, action_type)
 
@@ -578,12 +672,15 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
             if input_value and ("cockpit" in input_value or "dashboard" in input_value or "home" in input_value):
                 # 检查是否是第一个 navigate 步骤 / Check if this is the first navigate step
                 has_form_action = any(
-                    s.get("action_type") in ["click", "input"] 
+                    s.get("action_type") in ["click", "input"]
                     for s in steps[:steps.index(step)]
                 )
                 if has_form_action:
                     continue  # 跳过表单提交后的导航 / Skip navigation after form submission
             params = {"url": input_value}
+        elif keyword == "switch_tab":
+            # 切换标签页：使用最新打开的标签页（索引 -1）/ Switch tab: use latest tab (index -1)
+            params = {"tab_index": -1}
         elif keyword in ["click", "hover", "select", "input_text"]:
             params = {"element": element_value}
             if keyword == "input_text":
@@ -613,7 +710,17 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
 
     try:
         result = case_service.create_case(case_data)
-        return {"code": 0, "data": result, "message": "转换成功"}
+
+        # 构建提示信息 / Build hint message
+        message = "转换成功"
+        if captcha_step_indices:
+            skipped_count = len(captcha_step_indices)
+            if solve_captcha_inserted:
+                message = f"转换成功，已自动过滤 {skipped_count} 个验证码相关步骤，并已自动插入「识别验证码」关键字。"
+            else:
+                message = f"转换成功，已自动过滤 {skipped_count} 个验证码相关步骤。"
+
+        return {"code": 0, "data": result, "message": message}
     except ValueError as e:
         return {"code": 1, "message": str(e)}
     except Exception as e:

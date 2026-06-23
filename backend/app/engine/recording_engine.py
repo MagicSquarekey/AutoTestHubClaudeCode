@@ -404,6 +404,8 @@ class RecordingEngine:
         self._on_action_callback: Optional[Callable] = None
         self._screenshot_dir = ""
         self._polling_task: Optional[asyncio.Task] = None
+        self._pages: List[Page] = []  # 跟踪所有打开的页面 / Track all opened pages
+        self._last_poll_count = 0  # 轮询计数器，切换标签页时需要重置 / Poll counter, reset when switching tabs
 
     async def launch(self) -> None:
         """@Function: 启动浏览器 / Launch browser"""
@@ -485,7 +487,6 @@ class RecordingEngine:
 
     async def _start_polling(self) -> None:
         """@Function: 开始轮询页面操作 / Start polling page actions"""
-        last_count = 0
         consecutive_errors = 0
         max_consecutive_errors = 3  # 连续错误次数阈值
 
@@ -505,10 +506,10 @@ class RecordingEngine:
                 current_count = await self._page.evaluate("() => (window.__recorded_actions || []).length")
                 consecutive_errors = 0  # 重置错误计数
 
-                if current_count > last_count:
+                if current_count > self._last_poll_count:
                     # 获取新操作
                     new_actions = await self._page.evaluate(
-                        f"() => (window.__recorded_actions || []).slice({last_count})"
+                        f"() => (window.__recorded_actions || []).slice({self._last_poll_count})"
                     )
 
                     for action in new_actions:
@@ -523,6 +524,9 @@ class RecordingEngine:
                             # Don't screenshot for input/keyboard events
                             action["screenshot"] = ""
 
+                        # 添加页面URL信息
+                        action["page_url"] = self._page.url
+
                         # 添加到录制列表
                         self._recorded_actions.append(action)
 
@@ -533,7 +537,7 @@ class RecordingEngine:
                             except Exception as e:
                                 logger.error(f"回调执行失败: {e}")
 
-                    last_count = current_count
+                    self._last_poll_count = current_count
                     logger.info(f"轮询获取到 {len(new_actions)} 个新操作")
 
             except asyncio.CancelledError:
@@ -560,6 +564,108 @@ class RecordingEngine:
         """@Function: 设置操作监听器 / Setup action listener"""
         # 监听页面导航事件 / Listen to page navigation events
         self._page.on("framenavigated", self._on_navigation)
+
+        # 监听新标签页打开事件 / Listen to new page (tab) events
+        self._context.on("page", self._on_new_page)
+
+        # 记录初始页面 / Track initial page
+        self._pages = [self._page]
+        logger.info("已设置新标签页监听 / New tab listener set up")
+
+    async def _on_new_page(self, page: Page) -> None:
+        """@Function: 处理新标签页打开事件 / Handle new page (tab) opened event
+
+        当用户点击链接或按钮在新标签页打开时，自动切换到新标签页并继续录制。
+
+        Args:
+            page: 新打开的页面对象
+        """
+        if not self._is_recording:
+            return
+
+        logger.info(f"检测到新标签页打开 / New tab opened: {page.url}")
+
+        # 等待新页面加载 / Wait for new page to load
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=15000)
+            # 额外等待页面稳定 / Wait extra for page to stabilize
+            await asyncio.sleep(1.0)
+        except Exception as e:
+            logger.warning(f"等待新页面加载超时 / New page load timeout: {e}")
+
+        new_url = page.url
+        logger.info(f"新标签页URL / New tab URL: {new_url}")
+
+        # 检查前一个操作是否是 click 或 navigate，如果不是，补充一个 navigate 操作记录
+        # Check if previous action was click or navigate, if not, add a navigate action record
+        if self._recorded_actions:
+            last_action = self._recorded_actions[-1]
+            if last_action.get("action_type") not in ["click", "navigate"]:
+                logger.info(f"前一个操作不是 click/navigate，自动补充导航操作记录 / Previous action was not click/navigate, auto-adding navigate record")
+                # 创建一个 navigate 操作记录，转换用例时会变成 open_url
+                navigate_action = {
+                    "action_type": "navigate",
+                    "element_locators": {},
+                    "element_name": f"打开新标签页: {new_url}",
+                    "input_value": new_url,
+                    "page_url": self._page.url if self._page else "",
+                    "timestamp": int(time.time() * 1000) - 100,  # 确保在 switch_tab 之前
+                }
+                self._recorded_actions.append(navigate_action)
+                # 回调通知
+                if self._on_action_callback:
+                    try:
+                        await self._on_action_callback(navigate_action)
+                    except Exception as e:
+                        logger.warning(f"回调通知失败 / Callback notification failed: {e}")
+
+        # 记录切换标签页操作 / Record switch tab action
+        switch_action = {
+            "action_type": "switch_tab",
+            "element_locators": {},
+            "element_name": f"切换到新标签页",
+            "input_value": new_url,
+            "page_url": new_url,
+            "timestamp": int(time.time() * 1000),
+        }
+        self._recorded_actions.append(switch_action)
+
+        # 切换到新标签页 / Switch to new tab
+        self._page = page
+        self._pages.append(page)
+        # 重置轮询计数器，确保能获取新标签页的操作 / Reset poll counter to capture new tab actions
+        self._last_poll_count = 0
+        logger.info(f"已切换到新标签页 / Switched to new tab, total tabs: {len(self._pages)}")
+
+        # 在新标签页注入事件监听脚本 / Inject event listeners in new tab
+        try:
+            await self._inject_event_listeners()
+            # 验证脚本是否注入成功 / Verify script injection
+            is_initialized = await page.evaluate("() => window.__recording_engine_initialized || false")
+            if is_initialized:
+                logger.info("新标签页事件监听脚本已注入成功 / Event listeners injected successfully in new tab")
+            else:
+                logger.warning("新标签页脚本注入可能失败，重新注入 / Script injection may have failed, retrying...")
+                await asyncio.sleep(1.0)
+                await self._inject_event_listeners()
+        except Exception as e:
+            logger.warning(f"新标签页注入脚本失败 / Failed to inject script in new tab: {e}")
+
+        # 为新标签页设置导航监听 / Set up navigation listener for new tab
+        try:
+            page.on("framenavigated", self._on_navigation)
+        except Exception as e:
+            logger.warning(f"设置新标签页导航监听失败 / Failed to set navigation listener: {e}")
+
+        # 截图 / Take screenshot
+        await self._take_screenshot("switch_tab")
+
+        # 回调通知 / Callback notification
+        if self._on_action_callback:
+            try:
+                await self._on_action_callback(switch_action)
+            except Exception as e:
+                logger.warning(f"回调通知失败 / Callback notification failed: {e}")
 
     async def _on_navigation(self, frame) -> None:
         """@Function: 处理页面导航事件 / Handle page navigation event"""
@@ -675,6 +781,7 @@ class RecordingEngine:
             logger.warning(f"关闭浏览器时出样 / Error closing browser: {e}")
         finally:
             self._page = None
+            self._pages = []  # 清理页面列表 / Clear pages list
             self._context = None
             self._browser = None
             self._playwright = None
