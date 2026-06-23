@@ -105,60 +105,69 @@
             >
               <template #prepend>URL</template>
             </el-input>
-            <el-button
-              v-if="!isRecording"
-              type="danger"
-              :icon="VideoCamera"
-              :disabled="!currentTask || isStarting"
-              :loading="isStarting"
-              @click="handleStartRecording"
-            >
-              {{ isStarting ? '启动中...' : '开始录制' }}
-            </el-button>
-            <el-button
-              v-else
-              type="warning"
-              :icon="VideoPause"
-              @click="handleStopRecording"
-            >
-              停止录制
-            </el-button>
 
-            <!-- 自由录制按钮 -->
-            <el-button
-              v-if="!isRecording && currentTask"
-              type="success"
-              :icon="VideoCamera"
-              :disabled="isStarting"
-              @click="handleFreeRecording"
-            >
-              自由录制
-            </el-button>
+            <!-- 未录制状态：显示两种录制模式按钮 -->
+            <template v-if="!isRecording">
+              <el-button
+                type="danger"
+                :icon="VideoCamera"
+                :disabled="!currentTask || isStarting"
+                :loading="isStarting"
+                @click="handleStartRecording"
+              >
+                {{ isStarting ? '启动中...' : '直接录制' }}
+              </el-button>
+              <el-button
+                type="success"
+                :icon="VideoCamera"
+                :disabled="!currentTask || isStarting"
+                :loading="isStarting"
+                @click="handleFreeRecording"
+              >
+                自由录制
+              </el-button>
+            </template>
 
-            <!-- 手动开始录制按钮（自由录制模式下） -->
-            <el-button
-              v-if="isFreeRecording && !isManualRecording"
-              type="danger"
-              :icon="VideoCamera"
-              @click="handleStartManualRecording"
-            >
-              开始录制
-            </el-button>
+            <!-- 自由录制模式：浏览器已打开，等待用户手动开始 -->
+            <template v-else-if="isFreeRecording && !isManualRecording">
+              <el-button
+                type="danger"
+                :icon="VideoCamera"
+                @click="handleStartManualRecording"
+              >
+                开始录制
+              </el-button>
+              <el-button
+                type="warning"
+                :icon="VideoPause"
+                @click="handleStopRecording"
+              >
+                停止
+              </el-button>
+            </template>
 
-            <!-- 撤销按钮 -->
-            <el-button
-              v-if="isRecording"
-              type="info"
-              :icon="RefreshLeft"
-              :disabled="!stepsList.length"
-              @click="handleUndo"
-            >
-              撤销
-            </el-button>
+            <!-- 录制中：显示停止和撤销按钮 -->
+            <template v-else>
+              <el-button
+                type="warning"
+                :icon="VideoPause"
+                @click="handleStopRecording"
+              >
+                停止录制
+              </el-button>
+              <el-button
+                type="info"
+                :icon="RefreshLeft"
+                :disabled="!stepsList.length"
+                @click="handleUndo"
+              >
+                撤销
+              </el-button>
+            </template>
           </div>
           <div v-if="isRecording" class="recording-indicator">
             <el-badge is-dot class="recording-badge">
-              <span class="recording-text">{{ isFreeRecording && !isManualRecording ? '自由模式（导航到目标页面后点击开始录制）' : '正在录制中...' }}</span>
+              <span class="recording-text">{{ isFreeRecording && !isManualRecording ? '自由模式 - 请导航到目标页面后点击"开始录制"' : '正在录制中...' }}</span>
             </el-badge>
           </div>
         </el-card>
@@ -690,11 +699,19 @@ async function handleStartRecording() {
 
 async function handleStopRecording() {
   try {
-    const res = await recordApi.stopRecording(currentTask.value.id)
+    // 如果是自由录制模式但还没开始手动录制，直接关闭浏览器
+    if (isFreeRecording.value && !isManualRecording.value) {
+      // 调用停止接口关闭浏览器
+      await recordApi.stopRecording(currentTask.value.id)
+    } else {
+      await recordApi.stopRecording(currentTask.value.id)
+    }
+
+    // 重置所有录制状态
     isRecording.value = false
     isFreeRecording.value = false
     isManualRecording.value = false
-    ElMessage.success(res.message || '录制已停止')
+    ElMessage.success('录制已停止')
 
     // 停止轮询 / Stop polling
     stopPollingStatus()
@@ -710,6 +727,11 @@ async function handleStopRecording() {
   } catch (e) {
     console.error('停止录制失败:', e)
     ElMessage.error('停止录制失败: ' + (e.message || '未知错误'))
+    // 即使失败也重置状态
+    isRecording.value = false
+    isFreeRecording.value = false
+    isManualRecording.value = false
+    stopPollingStatus()
   }
 }
 

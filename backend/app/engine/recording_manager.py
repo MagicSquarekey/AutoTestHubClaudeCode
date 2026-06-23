@@ -294,6 +294,15 @@ class RecordingManager:
 
         except Exception as e:
             logger.error(f"自由录制任务 {task_id} 异常: {e}")
+            # 发生错误时更新任务状态
+            db = SessionLocal()
+            try:
+                service = RecordService(db)
+                service.update_task_status(task_id, "failed")
+            except Exception as ex:
+                logger.error(f"更新任务状态失败: {ex}")
+            finally:
+                db.close()
             raise
         finally:
             # 清理资源
@@ -307,46 +316,6 @@ class RecordingManager:
             self._engines.pop(task_id, None)
             self._starting_tasks.discard(task_id)
             logger.info(f"自由录制任务 {task_id} 资源已清理")
-
-            # 录制结束后更新任务状态（无论哪种原因结束）
-            # Update task status after recording ends (regardless of reason)
-            browser_alive = engine.is_alive
-            engine._is_recording = False
-
-            db = SessionLocal()
-            try:
-                service = RecordService(db)
-                if not browser_alive:
-                    logger.info(f"浏览器已关闭，停止录制任务 {task_id}")
-                    service.update_task_status(task_id, "completed")
-                    logger.info(f"任务 {task_id} 状态已更新为 completed")
-                else:
-                    # 正常停止（由 stop_recording 触发）
-                    service.update_task_status(task_id, "completed")
-                    logger.info(f"任务 {task_id} 状态已更新为 completed")
-            except Exception as e:
-                logger.error(f"更新任务状态失败: {e}")
-            finally:
-                db.close()
-
-        except Exception as e:
-            logger.error(f"录制引擎错误: {e}")
-            # 清除启动标记 / Clear starting flag
-            self._starting_tasks.discard(task_id)
-            # 发生错误时更新任务状态
-            db = SessionLocal()
-            try:
-                service = RecordService(db)
-                service.update_task_status(task_id, "failed")
-            except Exception as ex:
-                logger.error(f"更新任务状态失败: {ex}")
-            finally:
-                db.close()
-        finally:
-            # 确保浏览器关闭
-            await engine.close()
-            if task_id in self._engines:
-                del self._engines[task_id]
             # 确保清除启动标记 / Ensure starting flag is cleared
             self._starting_tasks.discard(task_id)
 
@@ -400,12 +369,17 @@ class RecordingManager:
             task_id: 任务 ID
 
         Returns:
-            是否正在录制
+            是否正在录制（包括自由录制模式下浏览器已打开但未开始录制的状态）
         """
         # 正在启动中也视为录制中 / Starting tasks are also considered recording
         if task_id in self._starting_tasks:
             return True
-        return task_id in self._engines and self._engines[task_id].is_recording
+        # 引擎存在即视为录制中（包括自由录制模式）
+        # Engine exists means recording (including free recording mode)
+        if task_id in self._engines:
+            engine = self._engines[task_id]
+            return engine.is_alive
+        return False
 
     def undo_last_action(self, task_id: int) -> bool:
         """@Function: 撤销最后一步操作 / Undo last action
