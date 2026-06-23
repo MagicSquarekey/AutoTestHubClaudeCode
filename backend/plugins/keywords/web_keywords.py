@@ -688,21 +688,9 @@ async def _solve_captcha(driver: WebDriver, params: Dict[str, Any], timeout: int
 
         # 检查 OCR 是否最终成功
         if not captcha_text:
-            if has_login_retry:
-                # 登录重试模式下，OCR 失败也尝试重试
-                logger.warning(f"[solve_captcha] OCR 识别失败，将在登录重试中重新尝试")
-                # 清理临时文件
-                if os.path.exists(screenshot_path):
-                    os.remove(screenshot_path)
-                login_attempt += 1
-                continue
-            elif on_fail == "skip":
-                logger.warning(f"[solve_captcha] OCR 识别失败，跳过验证码步骤: {last_error}")
-                if os.path.exists(screenshot_path):
-                    os.remove(screenshot_path)
-                return "[SKIPPED]"
-            elif on_fail == "manual":
-                # 人工介入模式
+            # 优先处理 on_fail 策略（manual 和 skip 优先级高于登录重试）
+            if on_fail == "manual":
+                # 人工介入模式：OCR 失败后让用户手动输入
                 if engine is None:
                     if os.path.exists(screenshot_path):
                         os.remove(screenshot_path)
@@ -713,7 +701,7 @@ async def _solve_captcha(driver: WebDriver, params: Dict[str, Any], timeout: int
                         os.remove(screenshot_path)
                     raise RuntimeError("OCR 识别失败，执行引擎不支持暂停功能")
 
-                logger.info("[solve_captcha] 策略为 manual，暂停执行等待人工输入...")
+                logger.info("[solve_captcha] OCR 识别失败，策略为 manual，暂停执行等待人工输入...")
                 captcha_text = await engine.pause_for_manual_input(
                     screenshot_path=screenshot_path,
                     captcha_selector=resolved_captcha_selector,
@@ -727,6 +715,19 @@ async def _solve_captcha(driver: WebDriver, params: Dict[str, Any], timeout: int
                     raise RuntimeError("人工介入失败：未收到用户输入的验证码")
 
                 logger.info(f"[solve_captcha] 收到人工输入的验证码: {captcha_text}")
+            elif on_fail == "skip":
+                logger.warning(f"[solve_captcha] OCR 识别失败，跳过验证码步骤: {last_error}")
+                if os.path.exists(screenshot_path):
+                    os.remove(screenshot_path)
+                return "[SKIPPED]"
+            elif has_login_retry:
+                # 登录重试模式下，OCR 失败也尝试重试
+                logger.warning(f"[solve_captcha] OCR 识别失败，将在登录重试中重新尝试")
+                # 清理临时文件
+                if os.path.exists(screenshot_path):
+                    os.remove(screenshot_path)
+                login_attempt += 1
+                continue
             else:
                 if os.path.exists(screenshot_path):
                     os.remove(screenshot_path)
@@ -830,9 +831,310 @@ async def _solve_captcha(driver: WebDriver, params: Dict[str, Any], timeout: int
     raise RuntimeError(f"验证码识别失败，已达最大登录重试次数 ({max_login_retries})")
 
 
+# ========== 导航关键字 / Navigation keywords ==========
+
+async def _navigate_to_project(driver: WebDriver, params: Dict[str, Any], timeout: int = 30) -> str:
+    """@Function: 导航到指定项目 / Navigate to specified project
+
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典，包含 project_name
+        timeout: 超时时间（秒）
+
+    Returns:
+        成功信息
+    """
+    project_name = params.get("project_name", "")
+    if not project_name:
+        raise ValueError("project_name 参数不能为空")
+
+    logger.info(f"[navigate_to_project] 正在导航到项目: {project_name}")
+
+    # 等待页面加载完成
+    await driver.page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+
+    # 尝试多种选择器定位项目卡片
+    selectors = [
+        f'text="{project_name}"',
+        f'div:has-text("{project_name}")',
+        f'span:has-text("{project_name}")',
+        f'[title="{project_name}"]',
+    ]
+
+    clicked = False
+    for selector in selectors:
+        try:
+            element = driver.page.locator(selector).first
+            if await element.is_visible(timeout=3000):
+                await element.click()
+                clicked = True
+                logger.info(f"[navigate_to_project] 点击项目: {project_name}")
+                break
+        except Exception:
+            continue
+
+    if not clicked:
+        raise RuntimeError(f"未找到项目: {project_name}")
+
+    # 等待页面跳转
+    await driver.page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+    await asyncio.sleep(1)
+
+    logger.info(f"[navigate_to_project] 已进入项目: {project_name}")
+    return f"已进入项目: {project_name}"
+
+
+async def _navigate_to_system(driver: WebDriver, params: Dict[str, Any], timeout: int = 30) -> str:
+    """@Function: 导航到指定系统 / Navigate to specified system
+
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典，包含 system_name
+        timeout: 超时时间（秒）
+
+    Returns:
+        成功信息
+    """
+    system_name = params.get("system_name", "")
+    if not system_name:
+        raise ValueError("system_name 参数不能为空")
+
+    logger.info(f"[navigate_to_system] 正在导航到系统: {system_name}")
+
+    # 等待页面加载完成
+    await driver.page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+
+    # 尝试多种选择器定位系统入口
+    selectors = [
+        f'text="{system_name}"',
+        f'div:has-text("{system_name}")',
+        f'span:has-text("{system_name}")',
+        f'a:has-text("{system_name}")',
+        f'button:has-text("{system_name}")',
+    ]
+
+    clicked = False
+    for selector in selectors:
+        try:
+            element = driver.page.locator(selector).first
+            if await element.is_visible(timeout=3000):
+                await element.click()
+                clicked = True
+                logger.info(f"[navigate_to_system] 点击系统: {system_name}")
+                break
+        except Exception:
+            continue
+
+    if not clicked:
+        raise RuntimeError(f"未找到系统: {system_name}")
+
+    # 等待页面跳转
+    await driver.page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+    await asyncio.sleep(2)
+
+    logger.info(f"[navigate_to_system] 已进入系统: {system_name}")
+    return f"已进入系统: {system_name}"
+
+
+async def _open_dashboard(driver: WebDriver, params: Dict[str, Any], timeout: int = 30) -> str:
+    """@Function: 打开大屏（新标签页）/ Open dashboard in new tab
+
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典，可选 project_name
+        timeout: 超时时间（秒）
+
+    Returns:
+        成功信息
+    """
+    project_name = params.get("project_name", "")
+
+    logger.info(f"[open_dashboard] 正在打开大屏: {project_name}")
+
+    # 等待页面加载完成
+    await driver.page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+
+    # 记录当前标签页数量
+    pages_before = len(driver.page.context.pages)
+
+    # 尝试多种选择器定位大屏入口
+    selectors = [
+        'button:has-text("大屏")',
+        'a:has-text("大屏")',
+        'div:has-text("综合管理平台")',
+        '[class*="dashboard"]',
+        '[class*="screen"]',
+        'button:has-text("进入")',
+    ]
+
+    clicked = False
+    for selector in selectors:
+        try:
+            element = driver.page.locator(selector).first
+            if await element.is_visible(timeout=3000):
+                await element.click()
+                clicked = True
+                logger.info(f"[open_dashboard] 点击大屏入口")
+                break
+        except Exception:
+            continue
+
+    if not clicked:
+        raise RuntimeError("未找到大屏入口")
+
+    # 等待新标签页打开
+    try:
+        await driver.page.context.wait_for_event("page", timeout=timeout * 1000)
+    except Exception:
+        pass
+
+    # 检查是否有新标签页
+    pages_after = len(driver.page.context.pages)
+    if pages_after > pages_before:
+        # 切换到新标签页
+        new_page = driver.page.context.pages[-1]
+        await new_page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+        # 更新 driver 的 page 引用
+        driver._page = new_page
+        logger.info(f"[open_dashboard] 已切换到大屏标签页")
+        return f"已打开大屏并切换到新标签页"
+    else:
+        logger.warning(f"[open_dashboard] 未检测到新标签页")
+        return f"已点击大屏入口（未检测到新标签页）"
+
+
+async def _switch_tab(driver: WebDriver, params: Dict[str, Any], timeout: int = 10) -> str:
+    """@Function: 切换浏览器标签页 / Switch browser tab
+
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典，包含 tab_index 或 tab_title
+        timeout: 超时时间（秒）
+
+    Returns:
+        成功信息
+    """
+    tab_index = params.get("tab_index", -1)
+    tab_title = params.get("tab_title", "")
+
+    pages = driver.page.context.pages
+    if len(pages) < 2:
+        raise RuntimeError("当前只有一个标签页，无法切换")
+
+    target_page = None
+
+    # 按标题查找
+    if tab_title:
+        for page in pages:
+            try:
+                title = await page.title()
+                if tab_title.lower() in title.lower():
+                    target_page = page
+                    break
+            except Exception:
+                continue
+
+    # 按索引查找
+    if target_page is None:
+        if tab_index < 0:
+            tab_index = len(pages) + tab_index  # 负数索引
+        if 0 <= tab_index < len(pages):
+            target_page = pages[tab_index]
+        else:
+            raise RuntimeError(f"标签页索引超出范围: {tab_index}（共 {len(pages)} 个标签页）")
+
+    # 切换到目标标签页
+    await target_page.bring_to_front()
+    driver._page = target_page
+    await target_page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+
+    title = await target_page.title()
+    logger.info(f"[switch_tab] 已切换到标签页: {title}")
+    return f"已切换到标签页: {title}"
+
+
+async def _close_tab(driver: WebDriver, params: Dict[str, Any], timeout: int = 10) -> str:
+    """@Function: 关闭当前标签页 / Close current tab
+
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典
+        timeout: 超时时间（秒）
+
+    Returns:
+        成功信息
+    """
+    pages = driver.page.context.pages
+    if len(pages) < 2:
+        raise RuntimeError("只有一个标签页，无法关闭")
+
+    current_page = driver.page
+    current_title = await current_page.title()
+
+    # 关闭当前标签页
+    await current_page.close()
+
+    # 切换到第一个标签页
+    remaining_pages = driver.page.context.pages
+    if remaining_pages:
+        driver._page = remaining_pages[0]
+        await remaining_pages[0].bring_to_front()
+        logger.info(f"[close_tab] 已关闭标签页: {current_title}")
+        return f"已关闭标签页: {current_title}"
+    else:
+        raise RuntimeError("关闭标签页后没有剩余标签页")
+
+
+async def _navigate_back(driver: WebDriver, params: Dict[str, Any], timeout: int = 30) -> str:
+    """@Function: 返回上一级页面 / Navigate back
+
+    Args:
+        driver: WebDriver 实例
+        params: 参数字典
+        timeout: 超时时间（秒）
+
+    Returns:
+        成功信息
+    """
+    logger.info("[navigate_back] 正在返回上一级页面")
+
+    # 尝试点击返回按钮
+    back_selectors = [
+        'button:has-text("返回")',
+        'a:has-text("返回")',
+        '[class*="back"]',
+        '.el-page-header__back',
+        'button:has-text("首页")',
+        'a:has-text("首页")',
+    ]
+
+    clicked = False
+    for selector in back_selectors:
+        try:
+            element = driver.page.locator(selector).first
+            if await element.is_visible(timeout=2000):
+                await element.click()
+                clicked = True
+                break
+        except Exception:
+            continue
+
+    # 如果没找到返回按钮，使用浏览器后退
+    if not clicked:
+        await driver.page.go_back()
+
+    # 等待页面加载
+    await driver.page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+    await asyncio.sleep(1)
+
+    logger.info("[navigate_back] 已返回上一级页面")
+    return "已返回上一级页面"
+
+
 # ========== 关键字映射表 / Keyword mapping ==========
 
 KEYWORD_MAP = {
+    # 通用操作 / Common operations
     "open_url": _open_url,
     "click": _click,
     "input_text": _input_text,
@@ -845,10 +1147,24 @@ KEYWORD_MAP = {
     "wait": _wait,
     "screenshot": _screenshot,
     "execute_js": _execute_js,
+
+    # 断言验证 / Assertions
     "assert_text": _assert_text,
     "assert_element_exists": _assert_element_exists,
     "assert_url": _assert_url,
     "assert_title": _assert_title,
+
+    # 等待 / Wait
     "wait_for_element": _wait_for_element,
+
+    # 验证码 / Captcha
     "solve_captcha": _solve_captcha,
+
+    # 导航操作 / Navigation
+    "navigate_to_project": _navigate_to_project,
+    "navigate_to_system": _navigate_to_system,
+    "open_dashboard": _open_dashboard,
+    "switch_tab": _switch_tab,
+    "close_tab": _close_tab,
+    "navigate_back": _navigate_back,
 }

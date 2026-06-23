@@ -48,5 +48,73 @@ def init_db():
     from app.models.scheduler_task import SchedulerTask
     from app.models.record_task import RecordTask
     from app.models.record_step import RecordStep
+    from app.models.test_module import TestModule
+    from app.models.test_tag import TestTag
+    from app.models.record_category import RecordCategory
 
     Base.metadata.create_all(bind=engine)
+
+    # 数据迁移：从用例表提取模块和标签 / Data migration: extract modules and tags from test_case
+    _migrate_modules_and_tags()
+
+    # 数据迁移：为录制任务表添加新字段 / Data migration: add new fields to record_task
+    _migrate_record_task_fields()
+
+
+def _migrate_modules_and_tags():
+    """@Function: 迁移现有用例中的模块和标签到新表 / Migrate existing modules and tags to new tables"""
+    from app.models.test_case import TestCase
+    from app.models.test_module import TestModule
+    from app.models.test_tag import TestTag
+
+    db = SessionLocal()
+    try:
+        # 迁移模块 / Migrate modules
+        if db.query(TestModule).count() == 0:
+            modules = db.query(TestCase.module).distinct().all()
+            for i, (module_name,) in enumerate(modules):
+                if module_name and module_name.strip():
+                    db.add(TestModule(name=module_name.strip(), sort_order=i))
+            db.commit()
+
+        # 迁移标签 / Migrate tags
+        if db.query(TestTag).count() == 0:
+            tag_names = set()
+            cases = db.query(TestCase.tags).all()
+            for (tags_str,) in cases:
+                if tags_str:
+                    for tag in tags_str.split(","):
+                        tag = tag.strip()
+                        if tag:
+                            tag_names.add(tag)
+            for tag_name in tag_names:
+                db.add(TestTag(name=tag_name))
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"数据迁移失败 / Data migration failed: {e}")
+    finally:
+        db.close()
+
+
+def _migrate_record_task_fields():
+    """@Function: 为录制任务表添加新字段 / Add new fields to record_task table"""
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            # 检查 category_id 列是否存在
+            result = conn.execute(text("PRAGMA table_info(record_task)"))
+            columns = [row[1] for row in result.fetchall()]
+
+            if 'category_id' not in columns:
+                conn.execute(text("ALTER TABLE record_task ADD COLUMN category_id INTEGER DEFAULT NULL"))
+                print("添加 record_task.category_id 列")
+
+            if 'tags' not in columns:
+                conn.execute(text("ALTER TABLE record_task ADD COLUMN tags VARCHAR(500) DEFAULT ''"))
+                print("添加 record_task.tags 列")
+
+            conn.commit()
+    except Exception as e:
+        print(f"录制任务表迁移失败 / Record task migration failed: {e}")

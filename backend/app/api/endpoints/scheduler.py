@@ -21,6 +21,8 @@ class SuiteCreate(BaseModel):
     case_ids: List[int] = []
     suite_type: str = "regression"
     platform: str = "web"
+    setup_steps: str = "[]"
+    teardown_steps: str = "[]"
 
 
 class SuiteUpdate(BaseModel):
@@ -30,6 +32,8 @@ class SuiteUpdate(BaseModel):
     case_ids: Optional[List[int]] = None
     suite_type: Optional[str] = None
     platform: Optional[str] = None
+    setup_steps: Optional[str] = None
+    teardown_steps: Optional[str] = None
 
 
 class TaskCreate(BaseModel):

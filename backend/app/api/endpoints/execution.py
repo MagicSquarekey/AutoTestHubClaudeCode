@@ -33,6 +33,11 @@ class TaskControl(BaseModel):
     action: str  # pause/resume/stop
 
 
+class CaptchaRequest(BaseModel):
+    """验证码提交请求"""
+    captcha_text: str
+
+
 @router.post("/run", summary="执行用例")
 async def run_cases(request: ExecRequest, db: Session = Depends(get_db)):
     """@Function: 执行指定的测试用例"""
@@ -139,3 +144,17 @@ async def debug_with_breakpoint(
     service = ExecService(db)
     task_id = service.debug_with_breakpoint(case_id, breakpoint_step_id, platform, device_id)
     return {"code": 0, "data": {"task_id": task_id}}
+
+
+@router.post("/captcha/{task_id}", summary="提交人工验证码")
+async def submit_captcha(task_id: str, request: CaptchaRequest, db: Session = Depends(get_db)):
+    """@Function: 提交人工输入的验证码"""
+    service = ExecService(db)
+    if not request.captcha_text:
+        raise HTTPException(status_code=400, detail="验证码不能为空")
+
+    success = service.submit_captcha(task_id, request.captcha_text)
+    if not success:
+        raise HTTPException(status_code=400, detail="提交验证码失败，任务可能不在等待状态")
+
+    return {"code": 0, "message": "验证码已提交"}

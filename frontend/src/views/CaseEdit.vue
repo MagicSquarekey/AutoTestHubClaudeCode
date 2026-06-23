@@ -21,6 +21,58 @@
       </div>
     </el-card>
 
+    <!-- 用例基本信息 / Case basic info -->
+    <el-card shadow="never" class="case-info-bar">
+      <el-form :model="formData" inline>
+        <el-form-item label="模块">
+          <el-select
+            v-model="formData.module"
+            filterable
+            allow-create
+            placeholder="选择模块"
+            style="width: 150px"
+          >
+            <el-option v-for="m in modules" :key="m" :label="m" :value="m" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="优先级">
+          <el-select v-model="formData.priority" style="width: 100px">
+            <el-option label="P0" value="P0">
+              <el-tag type="danger" size="small">P0</el-tag>
+            </el-option>
+            <el-option label="P1" value="P1">
+              <el-tag type="warning" size="small">P1</el-tag>
+            </el-option>
+            <el-option label="P2" value="P2">
+              <el-tag type="info" size="small">P2</el-tag>
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="平台">
+          <el-select v-model="formData.platform" style="width: 120px">
+            <el-option label="Web" value="web" />
+            <el-option label="Android" value="android" />
+            <el-option label="iOS" value="ios" />
+            <el-option label="小程序" value="miniapp" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-select
+            v-model="formData.tags"
+            multiple
+            filterable
+            allow-create
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="选择标签"
+            style="width: 250px"
+          >
+            <el-option v-for="t in tags" :key="t" :label="t" :value="t" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <!-- 主体内容 -->
     <div class="edit-content">
       <!-- 左侧：关键字库 -->
@@ -92,6 +144,20 @@
               </div>
             </div>
           </el-collapse-item>
+          <el-collapse-item title="导航操作" name="navigation">
+            <div class="keyword-list">
+              <div
+                v-for="kw in navigationKeywords"
+                :key="kw.name"
+                class="keyword-item"
+                draggable="true"
+                @dragstart="handleDragStart($event, kw)"
+              >
+                <el-icon><component :is="kw.icon" /></el-icon>
+                <span>{{ kw.name }}</span>
+              </div>
+            </div>
+          </el-collapse-item>
         </el-collapse>
       </el-card>
 
@@ -99,11 +165,76 @@
       <el-card shadow="never" class="step-canvas">
         <template #header>
           <div class="canvas-header">
-            <span>测试步骤</span>
-            <el-button-group>
-              <el-button size="small" :icon="Plus" @click="addStep">添加步骤</el-button>
-              <el-button size="small" :icon="Sort" @click="toggleSortMode">排序</el-button>
-            </el-button-group>
+            <el-tabs v-model="activeStepTab" class="step-tabs">
+              <el-tab-pane label="前置步骤" name="setup">
+                <template #label>
+                  <span>前置步骤 <el-tag size="small" type="info">{{ formData.setup_steps?.length || 0 }}</el-tag></span>
+                </template>
+              </el-tab-pane>
+              <el-tab-pane label="主步骤" name="main">
+                <template #label>
+                  <span>主步骤 <el-tag size="small" type="primary">{{ formData.steps?.length || 0 }}</el-tag></span>
+                </template>
+              </el-tab-pane>
+              <el-tab-pane label="后置步骤" name="teardown">
+                <template #label>
+                  <span>后置步骤 <el-tag size="small" type="info">{{ formData.teardown_steps?.length || 0 }}</el-tag></span>
+                </template>
+              </el-tab-pane>
+            </el-tabs>
+            <div class="canvas-actions">
+              <!-- 快速添加模板 -->
+              <el-dropdown v-if="activeStepTab !== 'main'" @command="addPresetStep" trigger="click">
+                <el-button size="small" type="success" :icon="Plus">
+                  快速添加 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="login_solve_captcha">
+                      <el-icon><Key /></el-icon> 登录（验证码识别）
+                    </el-dropdown-item>
+                    <el-dropdown-item command="login_simple">
+                      <el-icon><User /></el-icon> 登录（简单）
+                    </el-dropdown-item>
+                    <el-dropdown-item divided command="navigate_project">
+                      <el-icon><HomeFilled /></el-icon> 进入项目
+                    </el-dropdown-item>
+                    <el-dropdown-item command="navigate_system">
+                      <el-icon><Menu /></el-icon> 进入系统
+                    </el-dropdown-item>
+                    <el-dropdown-item command="open_dashboard">
+                      <el-icon><Monitor /></el-icon> 打开大屏
+                    </el-dropdown-item>
+                    <el-dropdown-item divided command="screenshot">
+                      <el-icon><Camera /></el-icon> 截图
+                    </el-dropdown-item>
+                    <el-dropdown-item command="wait_2s">
+                      <el-icon><Timer /></el-icon> 等待2秒
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <!-- 从已有用例复制 -->
+              <el-dropdown v-if="activeStepTab !== 'main'" @command="copyFromCase" trigger="click">
+                <el-button size="small" type="warning" :icon="CopyDocument">
+                  从用例复制 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-for="c in allCases" :key="c.id" :command="c.id" :disabled="c.id === formData.id">
+                      {{ c.case_name }}
+                    </el-dropdown-item>
+                    <el-dropdown-item v-if="!allCases.length" disabled>暂无用例</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <el-button-group>
+                <el-button size="small" :icon="Plus" @click="addStep">添加步骤</el-button>
+                <el-button size="small" :icon="Sort" @click="toggleSortMode">排序</el-button>
+              </el-button-group>
+            </div>
           </div>
         </template>
         <div
@@ -112,7 +243,7 @@
           @drop="handleDrop"
         >
           <div
-            v-for="(step, index) in formData.steps"
+            v-for="(step, index) in currentSteps"
             :key="step.id"
             :class="['step-item', { active: activeStepId === step.id, disabled: step.disabled, 'drop-target': dropTargetIndex === index }]"
             @click="selectStep(step)"
@@ -129,7 +260,7 @@
               <div class="step-actions">
                 <el-button-group size="small">
                   <el-button :icon="Top" @click.stop="moveStep(index, -1)" :disabled="index === 0" />
-                  <el-button :icon="Bottom" @click.stop="moveStep(index, 1)" :disabled="index === formData.steps.length - 1" />
+                  <el-button :icon="Bottom" @click.stop="moveStep(index, 1)" :disabled="index === currentSteps.length - 1" />
                   <el-button :icon="CopyDocument" @click.stop="copyStep(index)" />
                   <el-button :icon="Delete" @click.stop="removeStep(index)" type="danger" />
                 </el-button-group>
@@ -150,7 +281,7 @@
 
           <!-- 拖拽到末尾的占位区域 -->
           <div
-            v-if="formData.steps.length > 0"
+            v-if="currentSteps.length > 0"
             class="drop-end-zone"
             @dragover="handleDragOverEnd"
             @dragleave="handleDragLeaveEnd"
@@ -158,7 +289,7 @@
           ></div>
 
           <!-- 空状态 -->
-          <el-empty v-if="!formData.steps.length" description="拖拽关键字到此处添加步骤" />
+          <el-empty v-if="!currentSteps.length" description="拖拽关键字到此处添加步骤" />
         </div>
       </el-card>
 
@@ -358,8 +489,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Search, Plus, Delete, Top, Bottom, CopyDocument, Sort } from '@element-plus/icons-vue'
-import { caseApi, debugApi } from '@/api'
+import { Back, Search, Plus, Delete, Top, Bottom, CopyDocument, Sort, ArrowDown, Key, User, HomeFilled, Menu, Monitor, Camera, Timer } from '@element-plus/icons-vue'
+import { caseApi, debugApi, moduleApi, tagApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -372,14 +503,36 @@ const formData = ref({
   priority: 'P0',
   platform: 'web',
   steps: [],
+  setup_steps: [],
+  teardown_steps: [],
 })
+
+// 模块和标签选项 / Module and tag options
+const modules = ref([])
+const tags = ref([])
+
+// 所有用例列表（用于复制步骤）/ All cases list (for copying steps)
+const allCases = ref([])
 
 const activeStepId = ref(null)
 const keywordSearch = ref('')
-const activeKeywordGroup = ref(['common', 'web'])
+const activeKeywordGroup = ref(['common', 'web', 'navigation'])
+const activeStepTab = ref('main')
+
+// 计算当前活动的步骤列表
+const currentSteps = computed(() => {
+  switch (activeStepTab.value) {
+    case 'setup':
+      return formData.value.setup_steps || []
+    case 'teardown':
+      return formData.value.teardown_steps || []
+    default:
+      return formData.value.steps || []
+  }
+})
 
 const activeStep = computed(() => {
-  return formData.value.steps.find(s => s.id === activeStepId.value)
+  return currentSteps.value.find(s => s.id === activeStepId.value)
 })
 
 // 调试运行状态变量
@@ -432,25 +585,229 @@ const flowKeywords = [
   { name: '调用公共关键字', keyword: 'call_keyword', icon: 'Connection', params: { keyword_name: '' } },
 ]
 
+const navigationKeywords = [
+  { name: '进入项目', keyword: 'navigate_to_project', icon: 'HomeFilled', params: { project_name: '' } },
+  { name: '进入系统', keyword: 'navigate_to_system', icon: 'Menu', params: { system_name: '' } },
+  { name: '打开大屏', keyword: 'open_dashboard', icon: 'Monitor', params: { project_name: '' } },
+  { name: '切换标签页', keyword: 'switch_tab', icon: 'CopyDocument', params: { tab_index: -1, tab_title: '' } },
+  { name: '关闭标签页', keyword: 'close_tab', icon: 'Close', params: {} },
+  { name: '返回上级', keyword: 'navigate_back', icon: 'Back', params: {} },
+]
+
 onMounted(async () => {
   const id = route.params.id
   if (id) {
     await loadCase(id)
   }
+  // 加载模块和标签选项 / Load module and tag options
+  await loadModules()
+  await loadTags()
+  // 加载所有用例（用于复制步骤）/ Load all cases (for copying steps)
+  await loadAllCases()
 })
+
+// 加载模块列表 / Load module list
+const loadModules = async () => {
+  try {
+    const result = await moduleApi.getAll()
+    modules.value = result.map(m => m.name)
+  } catch (error) {
+    // 新接口失败时，降级使用旧接口 / Fallback to old API if new one fails
+    try {
+      modules.value = await caseApi.getModules()
+    } catch (e) {
+      console.error('加载模块失败:', e)
+    }
+  }
+}
+
+// 加载标签列表 / Load tag list
+const loadTags = async () => {
+  try {
+    const result = await tagApi.getAll()
+    tags.value = result.map(t => t.name)
+  } catch (error) {
+    // 新接口失败时，降级使用旧接口 / Fallback to old API if new one fails
+    try {
+      tags.value = await caseApi.getTags()
+    } catch (e) {
+      console.error('加载标签失败:', e)
+    }
+  }
+}
+
+// 加载所有用例列表（用于复制步骤）/ Load all cases list (for copying steps)
+const loadAllCases = async () => {
+  try {
+    const result = await caseApi.getList({ page_size: 100 })
+    allCases.value = result.list || []
+  } catch (error) {
+    console.error('加载用例列表失败:', error)
+  }
+}
+
+// 预设模板定义 / Preset templates
+const presetTemplates = {
+  login_solve_captcha: [
+    {
+      keyword: 'solve_captcha',
+      name: '识别验证码登录',
+      params: {
+        captcha_selector: '',
+        input_selector: '',
+        expected_length: 4,
+        max_retries: 3,
+        on_fail: 'manual',
+        login_button_selector: '',
+        dismiss_button_selector: '',
+        max_login_retries: 3,
+        login_wait_ms: 3000,
+      },
+    },
+  ],
+  login_simple: [
+    {
+      keyword: 'input_text',
+      name: '输入用户名',
+      params: { element: '', value: '' },
+    },
+    {
+      keyword: 'input_text',
+      name: '输入密码',
+      params: { element: '', value: '' },
+    },
+    {
+      keyword: 'click',
+      name: '点击登录',
+      params: { element: '' },
+    },
+  ],
+  navigate_project: [
+    {
+      keyword: 'navigate_to_project',
+      name: '进入项目',
+      params: { project_name: '' },
+    },
+  ],
+  navigate_system: [
+    {
+      keyword: 'navigate_to_system',
+      name: '进入系统',
+      params: { system_name: '' },
+    },
+  ],
+  open_dashboard: [
+    {
+      keyword: 'open_dashboard',
+      name: '打开大屏',
+      params: { project_name: '' },
+    },
+  ],
+  screenshot: [
+    {
+      keyword: 'screenshot',
+      name: '截图',
+      params: {},
+    },
+  ],
+  wait_2s: [
+    {
+      keyword: 'wait',
+      name: '等待2秒',
+      params: { timeout: 2 },
+    },
+  ],
+}
+
+// 添加预设模板步骤 / Add preset template steps
+const addPresetStep = (command) => {
+  const template = presetTemplates[command]
+  if (!template) return
+
+  const steps = getActiveStepsArray()
+  template.forEach((tpl) => {
+    steps.push({
+      id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      keyword: tpl.keyword,
+      name: tpl.name,
+      params: { ...tpl.params },
+      timeout: 30,
+      retry_count: 0,
+      on_error: 'stop',
+      disabled: false,
+      remark: '',
+    })
+  })
+
+  ElMessage.success(`已添加 ${template.length} 个步骤`)
+}
+
+// 从已有用例复制步骤 / Copy steps from existing case
+const copyFromCase = async (caseId) => {
+  try {
+    const caseData = await caseApi.getDetail(caseId)
+    let stepsToCopy = []
+
+    // 根据当前标签页决定复制哪些步骤
+    switch (activeStepTab.value) {
+      case 'setup':
+        stepsToCopy = caseData.setup_steps ? JSON.parse(caseData.setup_steps) : []
+        break
+      case 'teardown':
+        stepsToCopy = caseData.teardown_steps ? JSON.parse(caseData.teardown_steps) : []
+        break
+      default:
+        stepsToCopy = caseData.steps ? JSON.parse(caseData.steps) : []
+    }
+
+    if (stepsToCopy.length === 0) {
+      ElMessage.warning('该用例没有可复制的步骤')
+      return
+    }
+
+    // 为复制的步骤生成新ID
+    const steps = getActiveStepsArray()
+    stepsToCopy.forEach((step) => {
+      steps.push({
+        ...step,
+        id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      })
+    })
+
+    ElMessage.success(`已从用例复制 ${stepsToCopy.length} 个步骤`)
+  } catch (error) {
+    console.error('复制步骤失败:', error)
+    ElMessage.error('复制步骤失败')
+  }
+}
+
 const loadCase = async (id) => {
   try {
     const data = await caseApi.getDetail(id)
     const steps = data.steps ? JSON.parse(data.steps) : []
+    const setupSteps = data.setup_steps ? JSON.parse(data.setup_steps) : []
+    const teardownSteps = data.teardown_steps ? JSON.parse(data.teardown_steps) : []
     // 为没有ID的步骤补生成唯一ID
     steps.forEach((step, index) => {
       if (!step.id) {
         step.id = `step_loaded_${Date.now()}_${index}`
       }
     })
+    setupSteps.forEach((step, index) => {
+      if (!step.id) {
+        step.id = `setup_loaded_${Date.now()}_${index}`
+      }
+    })
+    teardownSteps.forEach((step, index) => {
+      if (!step.id) {
+        step.id = `teardown_loaded_${Date.now()}_${index}`
+      }
+    })
     formData.value = {
       ...data,
       steps,
+      setup_steps: setupSteps,
+      teardown_steps: teardownSteps,
     }
   } catch (error) {
     console.error('加载用例失败:', error)
@@ -517,7 +874,22 @@ const handleDropOnEnd = (event) => {
   }
 }
 
+// 获取当前活动的步骤数组引用
+const getActiveStepsArray = () => {
+  switch (activeStepTab.value) {
+    case 'setup':
+      if (!formData.value.setup_steps) formData.value.setup_steps = []
+      return formData.value.setup_steps
+    case 'teardown':
+      if (!formData.value.teardown_steps) formData.value.teardown_steps = []
+      return formData.value.teardown_steps
+    default:
+      return formData.value.steps
+  }
+}
+
 const addStepFromKeyword = (keyword, insertIndex = -1) => {
+  const steps = getActiveStepsArray()
   const step = {
     id: `step_${Date.now()}`,
     keyword: keyword.keyword,
@@ -529,12 +901,12 @@ const addStepFromKeyword = (keyword, insertIndex = -1) => {
     disabled: false,
     remark: '',
   }
-  if (insertIndex >= 0 && insertIndex < formData.value.steps.length) {
+  if (insertIndex >= 0 && insertIndex < steps.length) {
     // 插入到指定位置
-    formData.value.steps.splice(insertIndex, 0, step)
+    steps.splice(insertIndex, 0, step)
   } else {
     // 添加到末尾
-    formData.value.steps.push(step)
+    steps.push(step)
   }
   activeStepId.value = step.id
 }
@@ -552,25 +924,27 @@ const selectStep = (step) => {
 }
 
 const moveStep = (index, direction) => {
-  const steps = formData.value.steps
+  const steps = getActiveStepsArray()
   const newIndex = index + direction
   if (newIndex < 0 || newIndex >= steps.length) return
   [steps[index], steps[newIndex]] = [steps[newIndex], steps[index]]
 }
 
 const copyStep = (index) => {
-  const step = formData.value.steps[index]
+  const steps = getActiveStepsArray()
+  const step = steps[index]
   const newStep = {
     ...JSON.parse(JSON.stringify(step)),
     id: `step_${Date.now()}`,
   }
-  formData.value.steps.splice(index + 1, 0, newStep)
+  steps.splice(index + 1, 0, newStep)
   activeStepId.value = newStep.id
 }
 
 const removeStep = (index) => {
-  formData.value.steps.splice(index, 1)
-  if (activeStepId.value === formData.value.steps[index]?.id) {
+  const steps = getActiveStepsArray()
+  steps.splice(index, 1)
+  if (activeStepId.value === steps[index]?.id) {
     activeStepId.value = null
   }
 }
@@ -589,6 +963,8 @@ const handleSave = async () => {
     const data = {
       ...formData.value,
       steps: JSON.stringify(formData.value.steps),
+      setup_steps: JSON.stringify(formData.value.setup_steps || []),
+      teardown_steps: JSON.stringify(formData.value.teardown_steps || []),
     }
     if (route.params.id) {
       await caseApi.update(route.params.id, data)
@@ -753,6 +1129,19 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.case-info-bar :deep(.el-card__body) {
+  padding: 12px 20px;
+}
+
+.case-info-bar :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 16px;
+}
+
+.case-info-bar :deep(.el-form-item__label) {
+  font-weight: 500;
+}
+
 .edit-content {
   flex: 1;
   display: flex;
@@ -798,6 +1187,29 @@ onUnmounted(() => {
 .canvas-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.step-tabs {
+  flex: 1;
+}
+
+.step-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.step-tabs :deep(.el-tabs__item) {
+  height: 32px;
+  line-height: 32px;
+}
+
+.step-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.canvas-actions {
+  display: flex;
+  gap: 8px;
   align-items: center;
 }
 .step-list {

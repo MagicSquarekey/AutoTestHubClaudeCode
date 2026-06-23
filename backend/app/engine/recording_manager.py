@@ -61,6 +61,41 @@ class RecordingManager:
         logger.info(f"录制任务 {task_id} 线程已启动")
         return True
 
+    def start_free_recording(self, task_id: int, browser_type: str = "chromium") -> bool:
+        """@Function: 启动自由录制 / Start free recording
+
+        打开浏览器但不自动开始录制，等待用户手动触发
+
+        Args:
+            task_id: 任务 ID
+            browser_type: 浏览器类型
+
+        Returns:
+            是否启动成功
+        """
+        if task_id in self._engines or task_id in self._starting_tasks:
+            logger.warning(f"任务 {task_id} 已在录制中或正在启动")
+            return False
+
+        # 初始化新操作列表
+        self._new_actions[task_id] = []
+        # 标记为正在启动 / Mark as starting
+        self._starting_tasks.add(task_id)
+
+        logger.info(f"正在启动自由录制任务 {task_id}，浏览器: {browser_type}")
+
+        # 在新线程中启动录制引擎
+        thread = threading.Thread(
+            target=self._run_free_recording_thread,
+            args=(task_id, browser_type),
+            daemon=True,
+        )
+        self._threads[task_id] = thread
+        thread.start()
+
+        logger.info(f"录制任务 {task_id} 线程已启动")
+        return True
+
     def _run_recording_thread(self, task_id: int, target_url: str, browser_type: str):
         """@Function: 在线程中运行录制引擎 / Run recording engine in thread"""
         logger.info(f"录制任务 {task_id} 线程开始运行")
@@ -81,6 +116,56 @@ class RecordingManager:
             # 确保清除启动标记 / Ensure starting flag is cleared
             self._starting_tasks.discard(task_id)
             logger.info(f"录制任务 {task_id} 线程已结束")
+
+    def _run_free_recording_thread(self, task_id: int, browser_type: str):
+        """@Function: 在线程中运行自由录制引擎 / Run free recording engine in thread"""
+        logger.info(f"自由录制任务 {task_id} 线程开始运行")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._loops[task_id] = loop
+
+        try:
+            loop.run_until_complete(self._free_recording_task(task_id, browser_type))
+        except Exception as e:
+            logger.error(f"自由录制任务 {task_id} 线程异常: {e}")
+            # 清除启动标记 / Clear starting flag on unexpected error
+            self._starting_tasks.discard(task_id)
+        finally:
+            loop.close()
+            if task_id in self._loops:
+                del self._loops[task_id]
+            # 确保清除启动标记 / Ensure starting flag is cleared
+            self._starting_tasks.discard(task_id)
+            logger.info(f"自由录制任务 {task_id} 线程已结束")
+
+    def start_manual_recording(self, task_id: int) -> bool:
+        """@Function: 手动开始录制（用于自由录制模式）/ Manually start recording (for free recording mode)
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否启动成功
+        """
+        engine = self._engines.get(task_id)
+        if not engine:
+            logger.warning(f"任务 {task_id} 的引擎不存在")
+            return False
+
+        # 在引擎的事件循环中启动录制
+        loop = self._loops.get(task_id)
+        if not loop:
+            logger.warning(f"任务 {task_id} 的事件循环不存在")
+            return False
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(engine.start_recording(""), loop)
+            future.result(timeout=5)
+            logger.info(f"任务 {task_id} 手动录制已启动")
+            return True
+        except Exception as e:
+            logger.error(f"任务 {task_id} 手动启动录制失败: {e}")
+            return False
 
     async def _recording_task(self, task_id: int, target_url: str, browser_type: str):
         """@Function: 录制任务协程 / Recording task coroutine"""
@@ -137,6 +222,91 @@ class RecordingManager:
             # 保持浏览器打开，直到录制停止
             while engine.is_recording and engine.is_alive:
                 await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"录制任务 {task_id} 异常: {e}")
+            raise
+        finally:
+            # 清理资源
+            logger.info(f"录制任务 {task_id} 正在清理资源...")
+            if engine:
+                try:
+                    await engine.close()
+                except Exception as e:
+                    logger.warning(f"关闭录制引擎时出错: {e}")
+            # 从引擎字典中移除
+            self._engines.pop(task_id, None)
+            self._starting_tasks.discard(task_id)
+            logger.info(f"录制任务 {task_id} 资源已清理")
+
+    async def _free_recording_task(self, task_id: int, browser_type: str):
+        """@Function: 自由录制任务协程 / Free recording task coroutine
+
+        打开浏览器但不自动开始录制，等待用户手动触发
+        """
+        logger.info(f"自由录制任务 {task_id} 协程开始，准备启动浏览器")
+        engine = RecordingEngine(browser_type=browser_type, headless=False)
+
+        try:
+            # 启动浏览器
+            logger.info(f"自由录制任务 {task_id} 正在启动浏览器...")
+            await engine.launch()
+            logger.info(f"自由录制任务 {task_id} 浏览器启动成功")
+
+            # 浏览器启动成功后，将引擎加入字典
+            self._engines[task_id] = engine
+
+            # 设置操作回调
+            async def on_action(action):
+                """处理新录制的操作"""
+                logger.info(f"录制任务 {task_id} 收到新操作: {action.get('action_type')}")
+                # 保存到数据库
+                db = SessionLocal()
+                try:
+                    service = RecordService(db)
+                    service.create_step({
+                        "task_id": task_id,
+                        "action_type": action.get("action_type", ""),
+                        "element_locators": action.get("element_locators", {}),
+                        "element_name": action.get("element_name", ""),
+                        "input_value": action.get("input_value", ""),
+                        "screenshot": action.get("screenshot", ""),
+                        "page_url": action.get("page_url", ""),
+                    })
+                    # 添加到新操作列表
+                    self._new_actions[task_id].append(action)
+                    logger.info(f"录制步骤已保存到数据库: {action.get('action_type')}")
+                except Exception as e:
+                    logger.error(f"保存录制步骤失败: {e}")
+                finally:
+                    db.close()
+
+            engine.set_on_action_callback(on_action)
+
+            # 清除启动标记
+            self._starting_tasks.discard(task_id)
+            logger.info(f"自由录制任务 {task_id} 浏览器已打开，等待用户手动开始录制")
+
+            # 保持浏览器打开，直到录制停止
+            # 等待用户手动调用 start_manual_recording
+            while task_id in self._engines and engine.is_alive:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"自由录制任务 {task_id} 异常: {e}")
+            raise
+        finally:
+            # 清理资源
+            logger.info(f"自由录制任务 {task_id} 正在清理资源...")
+            if engine:
+                try:
+                    await engine.close()
+                except Exception as e:
+                    logger.warning(f"关闭录制引擎时出错: {e}")
+            # 从引擎字典中移除
+            self._engines.pop(task_id, None)
+            self._starting_tasks.discard(task_id)
+            logger.info(f"自由录制任务 {task_id} 资源已清理")
 
             # 录制结束后更新任务状态（无论哪种原因结束）
             # Update task status after recording ends (regardless of reason)
@@ -236,6 +406,32 @@ class RecordingManager:
         if task_id in self._starting_tasks:
             return True
         return task_id in self._engines and self._engines[task_id].is_recording
+
+    def undo_last_action(self, task_id: int) -> bool:
+        """@Function: 撤销最后一步操作 / Undo last action
+
+        Args:
+            task_id: 任务 ID
+
+        Returns:
+            是否撤销成功
+        """
+        engine = self._engines.get(task_id)
+        if not engine:
+            logger.warning(f"任务 {task_id} 的引擎不存在")
+            return False
+
+        loop = self._loops.get(task_id)
+        if not loop:
+            logger.warning(f"任务 {task_id} 的事件循环不存在")
+            return False
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(engine.undo_last_action(), loop)
+            return future.result(timeout=5)
+        except Exception as e:
+            logger.error(f"任务 {task_id} 撤销操作失败: {e}")
+            return False
 
     def get_new_actions(self, task_id: int) -> List[Dict[str, Any]]:
         """@Function: 获取新录制的操作 / Get new recorded actions

@@ -78,8 +78,8 @@
     </el-card>
 
     <!-- 用例集编辑对话框 -->
-    <el-dialog v-model="suiteDialogVisible" :title="isEditSuite ? '编辑用例集' : '新建用例集'" width="600px">
-      <el-form :model="suiteForm" label-width="80px">
+    <el-dialog v-model="suiteDialogVisible" :title="isEditSuite ? '编辑用例集' : '新建用例集'" width="700px">
+      <el-form :model="suiteForm" label-width="100px">
         <el-form-item label="名称" required>
           <el-input v-model="suiteForm.suite_name" placeholder="输入用例集名称" />
         </el-form-item>
@@ -99,6 +99,26 @@
         </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="suiteForm.description" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-divider content-position="left">前置步骤（套件执行前）</el-divider>
+        <el-form-item label="前置步骤">
+          <el-input
+            v-model="suiteForm.setup_steps"
+            type="textarea"
+            :rows="3"
+            placeholder='[{"keyword": "login", "params": {"account": "admin"}}, {"keyword": "navigate_to_project", "params": {"project_name": "沈阳招商银行大厦"}}]'
+          />
+          <div class="step-hint">JSON 格式，每个步骤包含 keyword 和 params</div>
+        </el-form-item>
+        <el-divider content-position="left">后置步骤（套件执行后）</el-divider>
+        <el-form-item label="后置步骤">
+          <el-input
+            v-model="suiteForm.teardown_steps"
+            type="textarea"
+            :rows="3"
+            placeholder='[{"keyword": "screenshot", "params": {}}]'
+          />
+          <div class="step-hint">JSON 格式，每个步骤包含 keyword 和 params</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -164,6 +184,8 @@ const suiteForm = ref({
   suite_type: 'regression',
   platform: 'web',
   description: '',
+  setup_steps: '[]',
+  teardown_steps: '[]',
 })
 
 const taskDialogVisible = ref(false)
@@ -209,6 +231,8 @@ const createSuite = () => {
     suite_type: 'regression',
     platform: 'web',
     description: '',
+    setup_steps: '[]',
+    teardown_steps: '[]',
   }
   suiteDialogVisible.value = true
 }
@@ -326,5 +350,16 @@ const toggleTask = async (row) => {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+.step-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+:deep(.el-divider__text) {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

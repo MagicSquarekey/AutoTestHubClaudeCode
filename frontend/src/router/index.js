@@ -29,6 +29,18 @@ const routes = [
         meta: { title: '用例编辑', hidden: true },
       },
       {
+        path: 'module',
+        name: 'Module',
+        component: () => import('@/views/Module.vue'),
+        meta: { title: '模块管理', icon: 'Folder' },
+      },
+      {
+        path: 'tag',
+        name: 'Tag',
+        component: () => import('@/views/Tag.vue'),
+        meta: { title: '标签管理', icon: 'PriceTag' },
+      },
+      {
         path: 'element',
         name: 'Element',
         component: () => import('@/views/Element.vue'),

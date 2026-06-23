@@ -28,6 +28,8 @@ class RecordService:
         self,
         status: Optional[str] = None,
         keyword: Optional[str] = None,
+        category_id: Optional[int] = None,
+        tag: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
@@ -36,6 +38,8 @@ class RecordService:
         Args:
             status: 状态筛选 / Status filter
             keyword: 关键词搜索 / Keyword search
+            category_id: 分类ID筛选 / Category ID filter
+            tag: 标签筛选 / Tag filter
             page: 页码 / Page number
             page_size: 每页数量 / Page size
 
@@ -55,6 +59,10 @@ class RecordService:
                     RecordTask.target_url.contains(keyword),
                 )
             )
+        if category_id is not None:
+            query = query.filter(RecordTask.category_id == category_id)
+        if tag:
+            query = query.filter(RecordTask.tags.contains(tag))
 
         # 计算总数 / Count total
         total = query.count()
@@ -90,10 +98,17 @@ class RecordService:
         Returns:
             创建的任务字典 / Created task dict
         """
+        # 处理标签
+        tags = data.get("tags", [])
+        if isinstance(tags, list):
+            tags = ",".join(tags)
+
         task = RecordTask(
             task_name=data.get("task_name", "未命名录制任务"),
             target_url=data.get("target_url", ""),
             browser_type=data.get("browser_type", "chromium"),
+            category_id=data.get("category_id"),
+            tags=tags,
             description=data.get("description", ""),
         )
         self.db.add(task)
@@ -115,6 +130,10 @@ class RecordService:
         task = self.db.query(RecordTask).filter(RecordTask.id == task_id).first()
         if not task:
             return None
+
+        # 处理标签
+        if "tags" in data and isinstance(data["tags"], list):
+            data["tags"] = ",".join(data["tags"])
 
         # 更新字段 / Update fields
         for key, value in data.items():

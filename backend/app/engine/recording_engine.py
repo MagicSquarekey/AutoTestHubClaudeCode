@@ -689,6 +689,35 @@ class RecordingEngine:
         """获取录制的操作 / Get recorded actions"""
         return self._recorded_actions
 
+    async def undo_last_action(self) -> bool:
+        """@Function: 撤销最后一步操作 / Undo last action
+
+        Returns:
+            是否撤销成功
+        """
+        if not self._recorded_actions:
+            logger.warning("没有可撤销的操作")
+            return False
+
+        # 从内存列表中移除最后一步
+        removed = self._recorded_actions.pop()
+        logger.info(f"已撤销操作: {removed.get('action_type')} - {removed.get('element_name', '')}")
+
+        # 同步到页面的 __recorded_actions 数组
+        if self._page:
+            try:
+                await self._page.evaluate("""
+                    () => {
+                        if (window.__recorded_actions && window.__recorded_actions.length > 0) {
+                            window.__recorded_actions.pop();
+                        }
+                    }
+                """)
+            except Exception as e:
+                logger.warning(f"同步撤销到页面失败: {e}")
+
+        return True
+
     @property
     def page(self) -> Optional[Page]:
         """获取当前页面 / Get current page"""

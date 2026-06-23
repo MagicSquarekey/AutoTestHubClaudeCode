@@ -20,6 +20,8 @@ class TestCase(Base):
     priority = Column(String(10), default="P0", comment="优先级：P0/P1/P2 / Priority")
     description = Column(Text, default="", comment="用例描述 / Case description")
     steps = Column(Text, default="[]", comment="步骤内容，JSON 格式 / Steps in JSON format")
+    setup_steps = Column(Text, default="[]", comment="前置步骤，JSON 格式 / Setup steps in JSON format")
+    teardown_steps = Column(Text, default="[]", comment="后置步骤，JSON 格式 / Teardown steps in JSON format")
     version = Column(Integer, default=1, comment="版本号 / Version number")
     status = Column(Integer, default=1, comment="状态：1 启用 0 禁用 / Status: 1=enabled 0=disabled")
     platform = Column(String(50), default="web", comment="适用平台：web/android/ios/miniapp / Target platform")
@@ -36,6 +38,8 @@ class TestCase(Base):
             "priority": self.priority,
             "description": self.description,
             "steps": self.steps,
+            "setup_steps": self.setup_steps,
+            "teardown_steps": self.teardown_steps,
             "version": self.version,
             "status": self.status,
             "platform": self.platform,

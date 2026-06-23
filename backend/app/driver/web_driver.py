@@ -310,43 +310,46 @@ class WebDriver:
 
     async def close(self) -> None:
         """@Function: 关闭浏览器 / Close browser"""
-        try:
-            # 先关闭页面，再关闭上下文，最后关闭浏览器
-            if self._page:
-                try:
-                    await self._page.close()
-                except Exception:
-                    pass  # 页面可能已关闭
-                self._page = None
+        # 按顺序关闭：页面 -> 上下文 -> 浏览器 -> Playwright
+        # 每一步都独立 try-except，确保不会因为一个失败而跳过后续清理
 
-            if self._context:
-                try:
-                    await self._context.close()
-                except Exception as e:
-                    logger.debug(f"关闭上下文时出错（可忽略）: {e}")
-                self._context = None
-
-            if self._browser:
-                try:
-                    # 连接已断开时 is_connected() 为 False，直接跳过
-                    if self._browser.is_connected():
-                        await self._browser.close()
-                except Exception as e:
-                    logger.debug(f"关闭浏览器时出错（可忽略）: {e}")
-                self._browser = None
-
-            if self._playwright:
-                await self._playwright.stop()
-                self._playwright = None
-
-            logger.info("浏览器已关闭 / Browser closed")
-        except Exception as e:
-            logger.warning(f"关闭浏览器时出错 / Error closing browser: {e}")
-        finally:
+        # 1. 关闭页面
+        if self._page:
+            try:
+                await self._page.close()
+            except Exception:
+                pass  # 页面可能已关闭或连接已断开
             self._page = None
+
+        # 2. 关闭上下文
+        if self._context:
+            try:
+                await self._context.close()
+            except Exception as e:
+                logger.debug(f"关闭上下文时出错（可忽略）: {e}")
             self._context = None
+
+        # 3. 关闭浏览器
+        if self._browser:
+            try:
+                # 连接已断开时 is_connected() 为 False，直接跳过
+                if self._browser.is_connected():
+                    await self._browser.close()
+                else:
+                    logger.debug("浏览器连接已断开，跳过关闭 / Browser disconnected, skip close")
+            except Exception as e:
+                logger.debug(f"关闭浏览器时出错（可忽略）: {e}")
             self._browser = None
+
+        # 4. 停止 Playwright
+        if self._playwright:
+            try:
+                await self._playwright.stop()
+            except Exception as e:
+                logger.debug(f"停止 Playwright 时出错（可忽略）: {e}")
             self._playwright = None
+
+        logger.info("浏览器已关闭 / Browser closed")
 
     @property
     def page(self) -> Optional[Page]:

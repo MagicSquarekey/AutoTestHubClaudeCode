@@ -93,6 +93,7 @@ export const execApi = {
   getTasks: (params) => api.get('/exec/tasks', { params }),
   debugStep: (data) => api.post('/exec/debug/step', data),
   debugBreakpoint: (data) => api.post('/exec/debug/breakpoint', data),
+  submitCaptcha: (taskId, captchaText) => api.post(`/exec/captcha/${taskId}`, { captcha_text: captchaText }),
 }
 
 // ==================== 测试报告 API / Test Report API ====================
@@ -164,6 +165,26 @@ export const aiApi = {
   updateConfig: (data) => api.put('/ai/config', data),
 }
 
+// ==================== 录制分类 API / Recording Category API ====================
+export const categoryApi = {
+  // 获取分类树 / Get category tree
+  getTree: () => api.get('/record/categories/tree'),
+  // 获取子分类列表 / Get child category list
+  getList: (params) => api.get('/record/categories/list', { params }),
+  // 获取分类详情 / Get category detail
+  getDetail: (id) => api.get(`/record/categories/${id}`),
+  // 创建分类 / Create category
+  create: (data) => api.post('/record/categories/create', data),
+  // 更新分类 / Update category
+  update: (id, data) => api.put(`/record/categories/${id}`, data),
+  // 删除分类 / Delete category
+  delete: (id) => api.delete(`/record/categories/${id}`),
+  // 移动分类 / Move category
+  move: (id, parentId) => api.post(`/record/categories/${id}/move`, { parent_id: parentId }),
+  // 获取分类统计 / Get category stats
+  getStats: () => api.get('/record/categories/stats'),
+}
+
 // ==================== 页面录制 API / Page Recording API ====================
 export const recordApi = {
   // 任务相关 / Task related
@@ -172,9 +193,12 @@ export const recordApi = {
   createTask: (data) => api.post('/record/tasks/create', data),
   updateTask: (id, data) => api.put(`/record/tasks/${id}`, data),
   deleteTask: (id) => api.delete(`/record/tasks/${id}`),
-  startRecording: (id) => api.post(`/record/tasks/${id}/start`),
+  startRecording: (id, data) => api.post(`/record/tasks/${id}/start`, data),
+  startFreeRecording: (id) => api.post(`/record/tasks/${id}/start-free`),
+  startManualRecording: (id) => api.post(`/record/tasks/${id}/start-manual`),
   stopRecording: (id) => api.post(`/record/tasks/${id}/stop`),
   getRecordingStatus: (id) => api.get(`/record/tasks/${id}/status`),
+  undoLastAction: (id) => api.post(`/record/tasks/${id}/undo`),
 
   // 步骤相关 / Step related
   getSteps: (taskId) => api.get(`/record/tasks/${taskId}/steps`),
@@ -200,5 +224,41 @@ export const debugApi = {
   stopDebug: (taskId) => api.post(`/debug/stop/${taskId}`),
   // 提交人工验证码 / Submit manual captcha
   submitCaptcha: (taskId, captchaText) => api.post(`/debug/captcha/${taskId}`, { captcha_text: captchaText }),
+}
+
+// ==================== 模块管理 API / Module Management API ====================
+export const moduleApi = {
+  // 获取模块列表（分页）/ Get module list with pagination
+  getList: (params) => api.get('/module/list', { params }),
+  // 获取所有模块（下拉选择用）/ Get all modules (for dropdown)
+  getAll: () => api.get('/module/all'),
+  // 获取模块详情 / Get module detail
+  getDetail: (id) => api.get(`/module/${id}`),
+  // 创建模块 / Create module
+  create: (data) => api.post('/module/create', data),
+  // 更新模块 / Update module
+  update: (id, data) => api.put(`/module/${id}`, data),
+  // 删除模块 / Delete module
+  delete: (id) => api.delete(`/module/${id}`),
+  // 获取模块统计 / Get module stats
+  getStats: () => api.get('/module/stats'),
+}
+
+// ==================== 标签管理 API / Tag Management API ====================
+export const tagApi = {
+  // 获取标签列表（分页）/ Get tag list with pagination
+  getList: (params) => api.get('/tag/list', { params }),
+  // 获取所有标签（下拉选择用）/ Get all tags (for dropdown)
+  getAll: () => api.get('/tag/all'),
+  // 获取标签详情 / Get tag detail
+  getDetail: (id) => api.get(`/tag/${id}`),
+  // 创建标签 / Create tag
+  create: (data) => api.post('/tag/create', data),
+  // 更新标签 / Update tag
+  update: (id, data) => api.put(`/tag/${id}`, data),
+  // 删除标签 / Delete tag
+  delete: (id) => api.delete(`/tag/${id}`),
+  // 获取标签统计 / Get tag stats
+  getStats: () => api.get('/tag/stats'),
 }
 

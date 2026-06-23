@@ -5,7 +5,7 @@
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from app.models.database import Base
 
 
@@ -19,6 +19,8 @@ class RecordTask(Base):
     browser_type = Column(String(50), default="chromium", comment="浏览器类型 / Browser type")
     status = Column(String(20), default="pending", comment="状态：pending/recording/completed/stopped / Status")
     step_count = Column(Integer, default=0, comment="步骤数量 / Step count")
+    category_id = Column(Integer, ForeignKey('record_category.id'), nullable=True, comment="分类ID / Category ID")
+    tags = Column(String(500), default="", comment="标签，逗号分隔 / Tags, comma separated")
     description = Column(Text, default="", comment="描述 / Description")
     create_time = Column(DateTime, default=datetime.now, comment="创建时间 / Create time")
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间 / Update time")
@@ -32,6 +34,8 @@ class RecordTask(Base):
             "browser_type": self.browser_type,
             "status": self.status,
             "step_count": self.step_count,
+            "category_id": self.category_id,
+            "tags": self.tags.split(",") if self.tags else [],
             "description": self.description,
             "create_time": self.create_time.strftime("%Y-%m-%d %H:%M:%S") if self.create_time else None,
             "update_time": self.update_time.strftime("%Y-%m-%d %H:%M:%S") if self.update_time else None,

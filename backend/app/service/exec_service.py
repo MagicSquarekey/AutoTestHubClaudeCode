@@ -80,7 +80,18 @@ class ExecService:
                 "task_id": task_id,
                 "status": TaskStatus.PENDING,
                 "params": params,
-                "cases": [{"id": c.id, "name": c.case_name, "steps": json.loads(c.steps) if c.steps else []} for c in cases],
+                "cases": [
+                    {
+                        "id": c.id,
+                        "name": c.case_name,
+                        "steps": json.loads(c.steps) if c.steps else [],
+                        "setup_steps": json.loads(c.setup_steps) if c.setup_steps else [],
+                        "teardown_steps": json.loads(c.teardown_steps) if c.teardown_steps else [],
+                    }
+                    for c in cases
+                ],
+                "suite_setup_steps": params.get("suite_setup_steps", []),
+                "suite_teardown_steps": params.get("suite_teardown_steps", []),
                 "current_case_index": 0,
                 "current_step_index": 0,
                 "results": [],
@@ -88,6 +99,7 @@ class ExecService:
                 "screenshots": [],
                 "start_time": None,
                 "end_time": None,
+                "engine": None,  # 执行引擎引用，用于检查验证码等待状态
             }
 
         # 异步执行任务
@@ -112,11 +124,15 @@ class ExecService:
             raise ValueError("用例集不存在")
 
         case_ids = json.loads(suite.case_ids) if suite.case_ids else []
+        suite_setup_steps = json.loads(suite.setup_steps) if suite.setup_steps else []
+        suite_teardown_steps = json.loads(suite.teardown_steps) if suite.teardown_steps else []
 
         return self.create_task({
             "case_ids": case_ids,
             "platform": platform,
             "device_id": device_id,
+            "suite_setup_steps": suite_setup_steps,
+            "suite_teardown_steps": suite_teardown_steps,
         })
 
     def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -133,6 +149,18 @@ class ExecService:
             if not task:
                 return None
 
+            # 检查是否正在等待验证码输入
+            waiting_captcha = False
+            captcha_screenshot = None
+            engine = task.get("engine")
+            if engine:
+                has_pending = hasattr(engine, '_pending_manual_input')
+                pending_value = engine._pending_manual_input if has_pending else None
+                if has_pending and pending_value:
+                    waiting_captcha = True
+                    captcha_screenshot = pending_value.get("screenshot_base64")
+                    logger.debug(f"检测到验证码等待状态: waiting_captcha={waiting_captcha}, has_screenshot={captcha_screenshot is not None}")
+
             return {
                 "task_id": task["task_id"],
                 "status": task["status"],
@@ -143,6 +171,8 @@ class ExecService:
                 "start_time": task["start_time"],
                 "end_time": task["end_time"],
                 "duration": (task["end_time"] - task["start_time"]) if task["start_time"] and task["end_time"] else None,
+                "waiting_captcha": waiting_captcha,
+                "captcha_screenshot": captcha_screenshot,
             }
 
     def control_task(self, task_id: str, action: str) -> bool:
@@ -171,6 +201,28 @@ class ExecService:
 
             logger.info(f"任务 {task_id} 执行 {action}")
             return True
+
+    def submit_captcha(self, task_id: str, captcha_text: str) -> bool:
+        """@Function: 提交人工验证码
+
+        Args:
+            task_id: 任务ID
+            captcha_text: 验证码文本
+
+        Returns:
+            是否成功
+        """
+        with self._task_lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return False
+
+            engine = task.get("engine")
+            if not engine:
+                return False
+
+            # 调用引擎的 submit_manual_input 方法
+            return engine.submit_manual_input(captcha_text)
 
     def get_exec_log(self, task_id: str, case_id: Optional[int] = None, step_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """@Function: 获取执行日志
@@ -352,6 +404,10 @@ class ExecService:
                 timeout=engine_timeout,
             )
 
+            # 存储引擎引用到任务状态，用于检查验证码等待状态
+            with self._task_lock:
+                task["engine"] = engine
+
             # 在线程中创建新的事件循环运行异步引擎
             # Windows 需要 ProactorEventLoop 才支持子进程
             if sys.platform == "win32":
@@ -382,19 +438,8 @@ class ExecService:
                     db.rollback()
 
         finally:
-            # 确保引擎关闭
-            if engine:
-                try:
-                    if sys.platform == "win32":
-                        cleanup_loop = asyncio.ProactorEventLoop()
-                    else:
-                        cleanup_loop = asyncio.new_event_loop()
-                    cleanup_loop.run_until_complete(engine.stop())
-                    cleanup_loop.close()
-                except Exception:
-                    pass
-
-            # 关闭独立数据库会话
+            # 引擎已在 _run_task_with_engine 的 finally 块中关闭
+            # 这里只需要确保数据库会话关闭
             try:
                 db.close()
             except Exception:
@@ -412,6 +457,24 @@ class ExecService:
         try:
             # 启动引擎
             await engine.start()
+
+            # 获取套件级别的 setup/teardown
+            suite_setup_steps = task.get("suite_setup_steps", [])
+            suite_teardown_steps = task.get("suite_teardown_steps", [])
+
+            # 执行套件前置步骤
+            if suite_setup_steps:
+                logger.info(f"执行套件前置步骤: {len(suite_setup_steps)} 个")
+                for step in suite_setup_steps:
+                    # 检查任务状态
+                    with self._task_lock:
+                        if task["status"] == TaskStatus.STOPPED:
+                            break
+                    try:
+                        await engine.execute_step(step)
+                    except Exception as e:
+                        logger.warning(f"套件前置步骤执行失败: {e}")
+                        # 套件前置步骤失败，继续执行用例
 
             # 执行用例
             cases = task["cases"]
@@ -433,6 +496,20 @@ class ExecService:
 
                 with self._task_lock:
                     task["results"] = results
+
+            # 执行套件后置步骤
+            if suite_teardown_steps:
+                logger.info(f"执行套件后置步骤: {len(suite_teardown_steps)} 个")
+                for step in suite_teardown_steps:
+                    # 检查任务状态
+                    with self._task_lock:
+                        if task["status"] == TaskStatus.STOPPED:
+                            break
+                    try:
+                        await engine.execute_step(step)
+                    except Exception as e:
+                        logger.warning(f"套件后置步骤执行失败: {e}")
+                        # 套件后置步骤失败不影响任务结果
 
             # 更新任务状态
             with self._task_lock:
@@ -456,6 +533,12 @@ class ExecService:
         except Exception as e:
             logger.error(f"任务 {task_id} 执行失败: {e}")
             raise
+        finally:
+            # 在同一个事件循环中关闭引擎，确保浏览器正确关闭
+            try:
+                await engine.stop()
+            except Exception as e:
+                logger.debug(f"关闭引擎时出错（可忽略）: {e}")
 
     async def _execute_case_async(self, task_id: str, case: Dict[str, Any], engine: ExecutionEngine) -> Dict[str, Any]:
         """@Function: 执行单个用例（异步方法）
@@ -471,54 +554,81 @@ class ExecService:
         case_id = case["id"]
         case_name = case["name"]
         steps = case["steps"]
+        setup_steps = case.get("setup_steps", [])
+        teardown_steps = case.get("teardown_steps", [])
 
         logger.info(f"开始执行用例: {case_name}")
 
         step_results = []
         status = "passed"
 
-        for j, step in enumerate(steps):
-            # 检查任务状态
-            with self._task_lock:
-                task = self._tasks.get(task_id)
-                if task and task["status"] == TaskStatus.STOPPED:
+        # 执行前置步骤
+        if setup_steps:
+            logger.info(f"执行用例前置步骤: {len(setup_steps)} 个")
+            for j, step in enumerate(setup_steps):
+                step_result = await self._execute_step_async(task_id, case_id, step, engine)
+                step_results.append(step_result)
+                if step_result["status"] == "failed":
+                    logger.warning(f"前置步骤失败: {step.get('name', '')}")
+                    # 前置步骤失败，用例标记为失败
+                    status = "failed"
                     break
 
-                task["current_step_index"] = j
-
-            # 执行步骤
-            step_result = await self._execute_step_async(task_id, case_id, step, engine)
-            step_results.append(step_result)
-
-            # 记录日志
-            with self._task_lock:
-                task["logs"].append({
-                    "case_id": case_id,
-                    "step_id": step.get("id"),
-                    "step_name": step.get("name"),
-                    "status": step_result["status"],
-                    "message": step_result.get("message", ""),
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                })
-
-            if step_result["status"] == "failed":
-                status = "failed"
-
-                # 检查重试配置
-                retry_count = step.get("retry_count", 0)
-                for _ in range(retry_count):
-                    step_result = await self._execute_step_async(task_id, case_id, step, engine)
-                    if step_result["status"] == "passed":
-                        status = "passed"
+        # 执行主步骤（前置步骤成功时才执行）
+        if status == "passed":
+            for j, step in enumerate(steps):
+                # 检查任务状态
+                with self._task_lock:
+                    task = self._tasks.get(task_id)
+                    if task and task["status"] == TaskStatus.STOPPED:
                         break
+
+                    task["current_step_index"] = j
+
+                # 执行步骤
+                step_result = await self._execute_step_async(task_id, case_id, step, engine)
+                step_results.append(step_result)
+
+                # 记录日志
+                with self._task_lock:
+                    task["logs"].append({
+                        "case_id": case_id,
+                        "step_id": step.get("id"),
+                        "step_name": step.get("name"),
+                        "status": step_result["status"],
+                        "message": step_result.get("message", ""),
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    })
 
                 if step_result["status"] == "failed":
-                    # 检查异常处理策略
-                    on_error = step.get("on_error", "stop")
-                    if on_error == "continue":
-                        continue
-                    elif on_error == "stop":
-                        break
+                    status = "failed"
+
+                    # 检查重试配置
+                    retry_count = step.get("retry_count", 0)
+                    for _ in range(retry_count):
+                        step_result = await self._execute_step_async(task_id, case_id, step, engine)
+                        if step_result["status"] == "passed":
+                            status = "passed"
+                            break
+
+                    if step_result["status"] == "failed":
+                        # 检查异常处理策略
+                        on_error = step.get("on_error", "stop")
+                        if on_error == "continue":
+                            continue
+                        elif on_error == "stop":
+                            break
+
+        # 执行后置步骤（无论用例成功或失败都执行）
+        if teardown_steps:
+            logger.info(f"执行用例后置步骤: {len(teardown_steps)} 个")
+            for j, step in enumerate(teardown_steps):
+                try:
+                    step_result = await self._execute_step_async(task_id, case_id, step, engine)
+                    step_results.append(step_result)
+                except Exception as e:
+                    logger.warning(f"后置步骤执行失败: {e}")
+                    # 后置步骤失败不影响用例结果
 
         return {
             "case_id": case_id,

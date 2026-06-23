@@ -20,6 +20,8 @@ class TestSuite(Base):
     case_order = Column(Text, default="[]", comment="用例执行顺序，JSON格式")
     suite_type = Column(String(50), default="regression", comment="套件类型：smoke/regression/custom")
     platform = Column(String(50), default="web", comment="适用平台")
+    setup_steps = Column(Text, default="[]", comment="套件前置步骤，JSON格式")
+    teardown_steps = Column(Text, default="[]", comment="套件后置步骤，JSON格式")
     create_time = Column(DateTime, default=datetime.now, comment="创建时间")
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
 
@@ -34,6 +36,8 @@ class TestSuite(Base):
             "case_order": json.loads(self.case_order) if self.case_order else [],
             "suite_type": self.suite_type,
             "platform": self.platform,
+            "setup_steps": json.loads(self.setup_steps) if self.setup_steps else [],
+            "teardown_steps": json.loads(self.teardown_steps) if self.teardown_steps else [],
             "create_time": self.create_time.strftime("%Y-%m-%d %H:%M:%S") if self.create_time else None,
             "update_time": self.update_time.strftime("%Y-%m-%d %H:%M:%S") if self.update_time else None,
         }

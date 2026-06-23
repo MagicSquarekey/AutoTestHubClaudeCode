@@ -115,6 +115,8 @@ class TaskCreate(BaseModel):
     task_name: str = "未命名录制任务"
     target_url: str = ""
     browser_type: str = "chromium"
+    category_id: Optional[int] = None
+    tags: List[str] = []
     description: str = ""
 
 
@@ -123,6 +125,8 @@ class TaskUpdate(BaseModel):
     task_name: Optional[str] = None
     target_url: Optional[str] = None
     browser_type: Optional[str] = None
+    category_id: Optional[int] = None
+    tags: Optional[List[str]] = None
     description: Optional[str] = None
 
 
@@ -175,6 +179,8 @@ class BatchStepCreate(BaseModel):
 async def get_task_list(
     status: Optional[str] = None,
     keyword: Optional[str] = None,
+    category_id: Optional[int] = None,
+    tag: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
     db: Session = Depends(get_db),
@@ -184,6 +190,8 @@ async def get_task_list(
     result = service.get_task_list(
         status=status,
         keyword=keyword,
+        category_id=category_id,
+        tag=tag,
         page=page,
         page_size=page_size,
     )
@@ -263,6 +271,46 @@ async def start_recording(task_id: int, db: Session = Depends(get_db)):
     return {"code": 0, "data": result, "message": "录制已开始，浏览器即将打开"}
 
 
+@router.post("/tasks/{task_id}/start-free", summary="启动自由录制")
+async def start_free_recording(task_id: int, db: Session = Depends(get_db)):
+    """@Function: 启动自由录制（打开浏览器但不自动开始录制）"""
+    service = RecordService(db)
+    task = service.get_task_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="录制任务不存在")
+
+    browser_type = task.get("browser_type", "chromium")
+
+    logger.info(f"准备启动自由录制引擎，任务ID: {task_id}，浏览器: {browser_type}")
+
+    # 启动自由录制引擎
+    success = recording_manager.start_free_recording(task_id, browser_type)
+    if not success:
+        return {"code": 1, "message": "启动录制失败，请重试"}
+
+    # 更新任务状态
+    result = service.update_task_status(task_id, "recording")
+    logger.info(f"自由录制任务 {task_id} 已启动")
+    return {"code": 0, "data": result, "message": "浏览器已打开，请手动导航到目标页面后点击'开始录制'"}
+
+
+@router.post("/tasks/{task_id}/start-manual", summary="手动开始录制")
+async def start_manual_recording(task_id: int, db: Session = Depends(get_db)):
+    """@Function: 手动开始录制（用于自由录制模式）"""
+    service = RecordService(db)
+    task = service.get_task_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="录制任务不存在")
+
+    # 手动启动录制
+    success = recording_manager.start_manual_recording(task_id)
+    if not success:
+        return {"code": 1, "message": "启动录制失败，浏览器可能未打开"}
+
+    logger.info(f"任务 {task_id} 手动录制已启动")
+    return {"code": 0, "message": "录制已开始"}
+
+
 @router.post("/tasks/{task_id}/stop", summary="停止录制")
 async def stop_recording(task_id: int, db: Session = Depends(get_db)):
     """@Function: 停止录制任务"""
@@ -316,6 +364,31 @@ async def get_recording_status(task_id: int, db: Session = Depends(get_db)):
             "steps": steps,
         }
     }
+
+
+@router.post("/tasks/{task_id}/undo", summary="撤销最后一步")
+async def undo_last_action(task_id: int, db: Session = Depends(get_db)):
+    """@Function: 撤销最后一步录制操作"""
+    service = RecordService(db)
+    task = service.get_task_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="录制任务不存在")
+
+    # 从引擎中撤销
+    success = recording_manager.undo_last_action(task_id)
+    if not success:
+        return {"code": 1, "message": "撤销失败，没有可撤销的操作"}
+
+    # 从数据库中删除最后一步
+    steps = service.get_steps_by_task_id(task_id)
+    if steps:
+        last_step = steps[-1]
+        service.delete_step(last_step["id"])
+        logger.info(f"已从数据库删除最后一步: {last_step['id']}")
+
+    # 返回更新后的步骤列表
+    steps = service.get_steps_by_task_id(task_id)
+    return {"code": 0, "data": {"steps": steps}, "message": "已撤销最后一步操作"}
 
 
 @router.post("/tasks/{task_id}/reset", summary="重置任务状态")

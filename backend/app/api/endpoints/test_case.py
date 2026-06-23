@@ -22,6 +22,8 @@ class CaseCreate(BaseModel):
     priority: str = "P0"
     description: str = ""
     steps: str = "[]"
+    setup_steps: str = "[]"
+    teardown_steps: str = "[]"
     platform: str = "web"
 
 
@@ -33,6 +35,8 @@ class CaseUpdate(BaseModel):
     priority: Optional[str] = None
     description: Optional[str] = None
     steps: Optional[str] = None
+    setup_steps: Optional[str] = None
+    teardown_steps: Optional[str] = None
     platform: Optional[str] = None
     status: Optional[int] = None
 
@@ -46,6 +50,8 @@ class CaseResponse(BaseModel):
     priority: str
     description: str
     steps: str
+    setup_steps: str
+    teardown_steps: str
     version: int
     status: int
     platform: str
