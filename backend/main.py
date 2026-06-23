@@ -4,6 +4,13 @@ FastAPI 应用入口 / FastAPI application entry point
 @Function: 启动后端服务，配置中间件和路由 / Start backend service, configure middleware and routes
 """
 
+import os
+import re
+import sys
+import socket
+import subprocess
+import signal
+import time
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +40,106 @@ def reset_stale_recordings():
         if result.rowcount > 0:
             logger.info(f"启动时重置了 {result.rowcount} 个残留录制任务状态为 pending")
         conn.commit()
+
+
+def ensure_port_available(host: str, port: int) -> None:
+    """@Function: 检测端口是否可用，被占用时自动释放 / Ensure port is available, auto-free if occupied
+
+    Uses socket probe first; if occupied, finds the PID via `netstat` on Windows
+    or `lsof` on Unix and terminates the process so uvicorn can bind cleanly.
+
+    Args:
+        host: Bind address.
+        port: Port number to check.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+        sock.close()
+        logger.info(f"端口 {port} 可用")
+        return
+    except OSError:
+        sock.close()
+        logger.warning(f"端口 {port} 被占用，尝试自动释放...")
+
+    pid = _find_pid_by_port(port)
+    if pid is None:
+        msg = f"端口 {port} 被占用，但无法定位占用进程，请手动关闭占用进程或修改配置端口（HOST={host}, PORT={port}）"
+        logger.error(msg)
+        sys.exit(f"❌ {msg}")
+
+    if pid == os.getpid():
+        logger.warning(f"端口 {port} 被自身占用（PID={pid}），跳过终止")
+        return
+
+    logger.info(f"占用端口 {port} 的进程 PID={pid}，正在终止...")
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                check=True,
+                capture_output=True,
+            )
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (subprocess.CalledProcessError, OSError) as exc:
+        msg = f"端口 {port} 被进程 PID={pid} 占用，但终止失败: {exc}。请手动关闭该进程或修改配置端口"
+        logger.error(msg)
+        sys.exit(f"❌ {msg}")
+
+    # 等待端口释放（最多 3 秒）
+    for _ in range(30):
+        sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock2.bind((host, port))
+            sock2.close()
+            logger.info(f"端口 {port} 已释放")
+            return
+        except OSError:
+            sock2.close()
+        time.sleep(0.1)
+
+    msg = f"端口 {port} 被进程 PID={pid} 占用，释放超时（3秒）。请手动关闭该进程或修改配置端口（HOST={host}, PORT={port}）"
+    logger.error(msg)
+    sys.exit(f"❌ {msg}")
+
+
+def _find_pid_by_port(port: int) -> int | None:
+    """@Function: 根据端口号查找占用进程的 PID / Find PID that occupies the given port
+
+    Args:
+        port: Port number to look up.
+
+    Returns:
+        PID as int, or None if not found.
+    """
+    try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            pattern = re.compile(
+                rf":{port}\s+.*LISTENING\s+(\d+)"
+            )
+            match = pattern.search(result.stdout)
+            if match:
+                return int(match.group(1))
+        else:
+            result = subprocess.run(
+                ["lsof", "-i", f":{port}", "-t"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            pids = result.stdout.strip().split("\n")
+            if pids and pids[0]:
+                return int(pids[0])
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError) as exc:
+        logger.warning(f"查找端口 {port} 占用进程失败: {exc}")
+    return None
 
 
 @asynccontextmanager
@@ -88,6 +195,7 @@ async def health_check():
 
 
 if __name__ == "__main__":
+    ensure_port_available(settings.HOST, settings.PORT)
     uvicorn.run(
         "main:app",
         host=settings.HOST,

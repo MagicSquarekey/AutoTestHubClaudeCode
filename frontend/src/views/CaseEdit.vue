@@ -114,8 +114,11 @@
           <div
             v-for="(step, index) in formData.steps"
             :key="step.id"
-            :class="['step-item', { active: activeStepId === step.id, disabled: step.disabled }]"
+            :class="['step-item', { active: activeStepId === step.id, disabled: step.disabled, 'drop-target': dropTargetIndex === index }]"
             @click="selectStep(step)"
+            @dragover="handleDragOverStep($event, index)"
+            @dragleave="handleDragLeaveStep"
+            @drop="handleDropOnStep($event, index)"
           >
             <div class="step-header">
               <div class="step-index">{{ index + 1 }}</div>
@@ -144,6 +147,15 @@
               </el-tag>
             </div>
           </div>
+
+          <!-- 拖拽到末尾的占位区域 -->
+          <div
+            v-if="formData.steps.length > 0"
+            class="drop-end-zone"
+            @dragover="handleDragOverEnd"
+            @dragleave="handleDragLeaveEnd"
+            @drop="handleDropOnEnd"
+          ></div>
 
           <!-- 空状态 -->
           <el-empty v-if="!formData.steps.length" description="拖拽关键字到此处添加步骤" />
@@ -199,6 +211,19 @@
                   <el-option label="跳过继续" value="skip" />
                   <el-option label="人工介入" value="manual" />
                 </el-select>
+              </el-form-item>
+              <el-divider content-position="left">登录重试配置</el-divider>
+              <el-form-item label="登录按钮选择器">
+                <el-input v-model="activeStep.params.login_button_selector" placeholder="留空自动检测登录按钮" />
+              </el-form-item>
+              <el-form-item label="关闭弹窗选择器">
+                <el-input v-model="activeStep.params.dismiss_button_selector" placeholder="留空自动尝试常见弹窗关闭" />
+              </el-form-item>
+              <el-form-item label="登录重试次数">
+                <el-input-number v-model="activeStep.params.max_login_retries" :min="1" :max="10" />
+              </el-form-item>
+              <el-form-item label="登录等待(ms)">
+                <el-input-number v-model="activeStep.params.login_wait_ms" :min="1000" :max="30000" :step="1000" />
               </el-form-item>
             </template>
             <el-form-item label="超时时间(秒)">
@@ -293,12 +318,25 @@
             <el-table-column type="index" label="序号" width="60" />
             <el-table-column prop="keyword" label="关键字" width="120" />
             <el-table-column prop="message" label="执行结果" show-overflow-tooltip />
+            <el-table-column prop="page_url" label="页面URL" width="150" show-overflow-tooltip />
             <el-table-column prop="duration" label="耗时(秒)" width="80" />
             <el-table-column label="状态" width="80">
               <template #default="{ row }">
                 <el-tag :type="row.success ? 'success' : 'danger'" size="small">
                   {{ row.success ? '成功' : '失败' }}
                 </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="截图" width="80">
+              <template #default="{ row }">
+                <el-image
+                  v-if="row.screenshot"
+                  :src="`data:image/png;base64,${row.screenshot}`"
+                  :preview-src-list="[`data:image/png;base64,${row.screenshot}`]"
+                  fit="contain"
+                  style="width: 50px; height: 30px; cursor: pointer;"
+                />
+                <span v-else style="color: #999;">-</span>
               </template>
             </el-table-column>
           </el-table>
@@ -363,7 +401,7 @@ const submittingCaptcha = ref(false)
 // 关键字库
 const commonKeywords = [
   { name: '打开URL', keyword: 'open_url', icon: 'Link', params: { url: '' } },
-  { name: '等待', keyword: 'wait', icon: 'Timer', params: { timeout: 5 } },
+  { name: '等待', keyword: 'wait', icon: 'Timer', params: { timeout: 2 } },
   { name: '等待元素', keyword: 'wait_for_element', icon: 'Timer', params: { element: '' } },
   { name: '截图', keyword: 'screenshot', icon: 'Camera', params: {} },
   { name: '执行JS', keyword: 'execute_js', icon: 'Document', params: { script: '' } },
@@ -378,7 +416,7 @@ const webKeywords = [
   { name: '上传文件', keyword: 'upload_file', icon: 'Upload', params: { element: '', file_path: '' } },
   { name: '切换iframe', keyword: 'switch_iframe', icon: 'Switch', params: { iframe: '' } },
   { name: '切换窗口', keyword: 'switch_window', icon: 'Monitor', params: { window_index: 0 } },
-  { name: '识别验证码', keyword: 'solve_captcha', icon: 'Key', params: { captcha_selector: 'img.captcha', input_selector: "input[name='captcha']", expected_length: 4, max_retries: 3 } },
+  { name: '识别验证码', keyword: 'solve_captcha', icon: 'Key', params: { captcha_selector: '', input_selector: '', expected_length: 4, max_retries: 3, on_fail: 'manual', login_button_selector: '', dismiss_button_selector: '', max_login_retries: 3, login_wait_ms: 3000 } },
 ]
 
 const assertKeywords = [
@@ -423,16 +461,63 @@ const handleDragStart = (event, keyword) => {
   event.dataTransfer.setData('keyword', JSON.stringify(keyword))
 }
 
-const handleDrop = (event) => {
+const dropTargetIndex = ref(-1) // 拖放目标位置高亮
+
+const handleDragOverStep = (event, index) => {
   event.preventDefault()
+  event.stopPropagation()
+  dropTargetIndex.value = index
+}
+
+const handleDragLeaveStep = () => {
+  dropTargetIndex.value = -1
+}
+
+const handleDropOnStep = (event, index) => {
+  event.preventDefault()
+  event.stopPropagation()
+  dropTargetIndex.value = -1
   const data = event.dataTransfer.getData('keyword')
   if (data) {
     const keyword = JSON.parse(data)
-    addStepFromKeyword(keyword)
+    addStepFromKeyword(keyword, index)
+  }
+}
+const handleDrop = (event) => {
+  event.preventDefault()
+  dropTargetIndex.value = -1
+  const data = event.dataTransfer.getData('keyword')
+  if (data) {
+    const keyword = JSON.parse(data)
+    addStepFromKeyword(keyword, -1) // -1 表示添加到末尾
   }
 }
 
-const addStepFromKeyword = (keyword) => {
+// 拖拽到末尾区域的处理函数
+const isDragOverEnd = ref(false)
+
+const handleDragOverEnd = (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  isDragOverEnd.value = true
+}
+
+const handleDragLeaveEnd = () => {
+  isDragOverEnd.value = false
+}
+
+const handleDropOnEnd = (event) => {
+  event.preventDefault()
+  event.stopPropagation()
+  isDragOverEnd.value = -1
+  const data = event.dataTransfer.getData('keyword')
+  if (data) {
+    const keyword = JSON.parse(data)
+    addStepFromKeyword(keyword, -1) // -1 表示添加到末尾
+  }
+}
+
+const addStepFromKeyword = (keyword, insertIndex = -1) => {
   const step = {
     id: `step_${Date.now()}`,
     keyword: keyword.keyword,
@@ -444,7 +529,13 @@ const addStepFromKeyword = (keyword) => {
     disabled: false,
     remark: '',
   }
-  formData.value.steps.push(step)
+  if (insertIndex >= 0 && insertIndex < formData.value.steps.length) {
+    // 插入到指定位置
+    formData.value.steps.splice(insertIndex, 0, step)
+  } else {
+    // 添加到末尾
+    formData.value.steps.push(step)
+  }
   activeStepId.value = step.id
 }
 
@@ -501,11 +592,15 @@ const handleSave = async () => {
     }
     if (route.params.id) {
       await caseApi.update(route.params.id, data)
+      ElMessage.success('保存成功')
     } else {
-      await caseApi.create(data)
+      const result = await caseApi.create(data)
+      ElMessage.success('保存成功')
+      // 新建用例后跳转到编辑页面（带 id），以便继续编辑
+      if (result && result.id) {
+        router.replace({ name: 'CaseEdit', params: { id: result.id } })
+      }
     }
-    ElMessage.success('保存成功')
-    router.back()
   } catch (error) {
     console.error('保存失败:', error)
   }
@@ -705,9 +800,22 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
 }
-
 .step-list {
   min-height: 300px;
+}
+
+.drop-end-zone {
+  height: 40px;
+  border: 2px dashed transparent;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+}
+
+.drop-end-zone:hover,
+.drop-end-zone.drag-over {
+  border-color: #67c23a;
+  background-color: rgba(103, 194, 58, 0.1);
 }
 
 .step-item {
@@ -730,6 +838,12 @@ onUnmounted(() => {
 
 .step-item.disabled {
   opacity: 0.5;
+}
+
+.step-item.drop-target {
+  border-color: #67c23a;
+  border-style: dashed;
+  background-color: #f0f9eb;
 }
 
 .step-header {

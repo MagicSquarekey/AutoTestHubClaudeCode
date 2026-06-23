@@ -34,7 +34,20 @@
               @click="selectTask(task)"
             >
               <div class="task-info">
-                <div class="task-name">{{ task.task_name }}</div>
+                <div class="task-name" v-if="editingTaskId !== task.id" @dblclick.stop="startEditTaskName(task)">
+                  {{ task.task_name }}
+                  <el-icon class="edit-icon"><Edit /></el-icon>
+                </div>
+                <div class="task-name-edit" v-else>
+                  <el-input
+                    v-model="editingTaskName"
+                    size="small"
+                    @keyup.enter="confirmEditTaskName(task)"
+                    @keyup.escape="cancelEditTaskName"
+                    @blur="confirmEditTaskName(task)"
+                    ref="editInputRef"
+                  />
+                </div>
                 <div class="task-meta">
                   <el-tag :type="getStatusType(task.status)" size="small">
                     {{ getStatusLabel(task.status) }}
@@ -284,10 +297,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Search, VideoCamera, VideoPause, DocumentCopy } from '@element-plus/icons-vue'
+import { Plus, Delete, Search, VideoCamera, VideoPause, DocumentCopy, Edit } from '@element-plus/icons-vue'
 import { recordApi } from '@/api'
 
 const router = useRouter()
@@ -297,6 +310,8 @@ onUnmounted(() => {
   stopPollingStatus()
 })
 
+const editInputRef = ref(null)
+
 // ==================== 任务列表状态 / Task list state ====================
 const tasksLoading = ref(false)
 const taskList = ref([])
@@ -305,6 +320,10 @@ const currentTaskPage = ref(1)
 const pageSize = ref(20)
 const searchKeyword = ref('')
 const currentTask = ref(null)
+// Inline edit state / 内联编辑状态
+const editingTaskId = ref(null)
+const editingTaskName = ref('')
+
 
 // ==================== 录制状态 / Recording state ====================
 const isRecording = ref(false)
@@ -432,6 +451,47 @@ async function handleDeleteTask(task) {
     if (e !== 'cancel') {
       console.error('删除任务失败:', e)
     }
+  }
+}
+
+// 编辑任务名称 / Edit task name
+function startEditTaskName(task) {
+  editingTaskId.value = task.id
+  editingTaskName.value = task.task_name
+  // 自动聚焦输入框 / Auto focus input
+  nextTick(() => {
+    editInputRef.value?.focus()
+  })
+}
+
+function cancelEditTaskName() {
+  editingTaskId.value = null
+  editingTaskName.value = ''
+}
+
+async function confirmEditTaskName(task) {
+  const newName = editingTaskName.value.trim()
+  if (!newName) {
+    ElMessage.warning('任务名称不能为空')
+    return
+  }
+
+  if (newName === task.task_name) {
+    cancelEditTaskName()
+    return
+  }
+
+  try {
+    await recordApi.updateTask(task.id, { task_name: newName })
+    ElMessage.success('名称已更新')
+    task.task_name = newName
+    if (currentTask.value?.id === task.id) {
+      currentTask.value.task_name = newName
+    }
+  } catch (e) {
+    console.error('更新任务名称失败:', e)
+  } finally {
+    cancelEditTaskName()
   }
 }
 
@@ -823,6 +883,27 @@ function getActionTypeLabel(actionType) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+
+.task-name:hover {
+  color: #409eff;
+}
+
+.task-name .edit-icon {
+  display: none;
+  margin-left: 4px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.task-name:hover .edit-icon {
+  display: inline-block;
+}
+
+.task-name-edit {
+  margin-bottom: 4px;
 }
 
 .task-meta {

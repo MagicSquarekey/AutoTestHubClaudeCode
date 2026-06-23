@@ -102,6 +102,45 @@
       </el-form>
     </el-card>
 
+    <!-- OCR / 验证码识别配置 -->
+    <el-card shadow="never">
+      <template #header>
+        <span>OCR / 验证码识别配置</span>
+      </template>
+      <el-form :model="ocrConfig" label-width="160px">
+        <el-form-item label="OCR 引擎">
+          <el-select v-model="ocrConfig.OCR_ENGINE" style="width: 100%">
+            <el-option label="PaddleOCR (推荐)" value="paddleocr" />
+            <el-option label="Tesseract" value="tesseract" />
+            <el-option label="自动选择" value="auto" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="默认最大重试次数">
+          <el-input-number v-model="ocrConfig.OCR_MAX_RETRIES" :min="1" :max="10" />
+          <span class="form-hint">次</span>
+        </el-form-item>
+        <el-form-item label="失败后自动重试">
+          <el-switch v-model="ocrConfig.OCR_AUTO_RETRY" />
+          <span class="form-hint">识别失败时自动重新截图并重试</span>
+        </el-form-item>
+        <el-form-item label="失败提示后重试">
+          <el-switch v-model="ocrConfig.OCR_RETRY_AFTER_HINT" />
+          <span class="form-hint">点击"知道了"提示后重新输入验证码</span>
+        </el-form-item>
+        <el-form-item label="提示弹窗选择器">
+          <el-input v-model="ocrConfig.OCR_HINT_SELECTOR" placeholder="如: .el-message-box .el-button--primary" />
+          <span class="form-hint">识别失败提示弹窗中确认按钮的 CSS 选择器</span>
+        </el-form-item>
+        <el-form-item label="重试间隔 (秒)">
+          <el-input-number v-model="ocrConfig.OCR_RETRY_INTERVAL" :min="1" :max="30" />
+          <span class="form-hint">每次重试之间的等待时间</span>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="saveOcrConfig">保存配置</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <!-- 数据管理 -->
     <el-card shadow="never">
       <template #header>
@@ -188,6 +227,15 @@ const thirdPartyConfig = ref({
   AI_MODEL: 'gpt-3.5-turbo',
 })
 
+const ocrConfig = ref({
+  OCR_ENGINE: 'paddleocr',
+  OCR_MAX_RETRIES: 3,
+  OCR_AUTO_RETRY: true,
+  OCR_RETRY_AFTER_HINT: true,
+  OCR_HINT_SELECTOR: '.el-message-box .el-button--primary',
+  OCR_RETRY_INTERVAL: 3,
+})
+
 const variables = ref([])
 const systemInfo = ref(null)
 
@@ -226,6 +274,12 @@ const loadConfigs = async () => {
         thirdPartyConfig.value[key] = configMap[key]
       }
     })
+    // 更新OCR配置
+    Object.keys(ocrConfig.value).forEach(key => {
+      if (configMap[key] !== undefined) {
+        ocrConfig.value[key] = configMap[key]
+      }
+    })
   } catch (error) {
     console.error('加载配置失败:', error)
   }
@@ -262,6 +316,15 @@ const saveThirdPartyConfig = async () => {
     ElMessage.success('配置保存成功')
   } catch (error) {
     console.error('保存配置失败:', error)
+  }
+}
+
+const saveOcrConfig = async () => {
+  try {
+    await systemApi.batchUpdateConfigs(ocrConfig.value)
+    ElMessage.success('OCR配置保存成功')
+  } catch (error) {
+    console.error('保存OCR配置失败:', error)
   }
 }
 

@@ -6,6 +6,7 @@
 
 import json
 import asyncio
+import base64
 import threading
 import time
 import re
@@ -43,55 +44,29 @@ def clean_css_selector(css: str) -> str:
 
 
 def _simplify_css_selector(css: str) -> str:
-    """@Function: Simplify complex CSS selector, extract most stable parts"""
+    """@Function: 清理CSS选择器，仅移除动态类名 / Clean CSS selector, only remove dynamic classes
+
+    注意：不做路径截断和选择器提取，避免破坏录制时捕获的完整选择器路径。
+    录制阶段已经通过 convert_to_case 选择了最优选择器，执行时只需清理动态类名。
+    """
     if not css:
         return css
+    return clean_css_selector(css)
 
-    css = clean_css_selector(css)
 
-    # Try to extract input element selector
-    input_match = re.search(r'(input\[.*?\]|input\.[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*)', css)
-    if input_match:
-        input_selector = input_match.group(0)
+def _fix_xpath_selector(selector: str) -> str:
+    """@Function: 修复畸形 XPath 选择器 / Fix malformed XPath selectors
 
-        # Try to extract more stable selector from parent
-        placeholder_match = re.search(r"placeholder\s*=\s*['\"]([^'\"]+)['\"]", css)
-        if placeholder_match:
-            return f'input[placeholder="{placeholder_match.group(1)}"]'
-
-        name_match = re.search(r"name\s*=\s*['\"]([^'\"]+)['\"]", css)
-        if name_match:
-            return f'input[name="{name_match.group(1)}"]'
-
-        type_match = re.search(r"type\s*=\s*['\"]([^'\"]+)['\"]", css)
-        if type_match:
-            return f'input[type="{type_match.group(1)}"]'
-
-        # Look for stable class names in parent (e.g. ant-input-password)
-        password_match = re.search(r'(ant-input-password|has-border)', css)
-        if password_match:
-            return f'span.{password_match.group(1)} input'
-
-        # If input selector is simple enough, return it directly
-        if len(input_selector) < 50:
-            return input_selector
-
-    # For button elements
-    button_match = re.search(r'(button\[.*?\]|button\.[a-zA-Z0-9_-]+)', css)
-    if button_match:
-        button_selector = button_match.group(0)
-        text_match = re.search(r":has-text\(['\"]([^'\"]+)['\"]\)", css)
-        if text_match:
-            return f'button:has-text("{text_match.group(1)}")'
-        if len(button_selector) < 50:
-            return button_selector
-
-    # If cannot simplify, truncate overly long paths - keep only last 3 levels
-    parts = css.split(' > ')
-    if len(parts) > 3:
-        return ' > '.join(parts[-3:])
-
-    return css
+    修复录制时生成的畸形 XPath，例如：
+    - //[@id="app"]/div → //*[@id="app"]/div
+    - //[@id="app"]/div/button → //*[@id="app"]/div/button
+    """
+    if not selector:
+        return selector
+    # 修复 //[@id="..."] 开头的畸形 XPath（缺少元素名或通配符）
+    if re.match(r'^//\[@', selector):
+        selector = '//*' + selector[2:]
+    return selector
 
 
 class DebugRunRequest(BaseModel):
@@ -111,6 +86,7 @@ class DebugStepResult(BaseModel):
     message: str
     duration: float = 0
     screenshot: str = ""
+    page_url: str = ""
 
 
 class ManualCaptchaInput(BaseModel):
@@ -309,10 +285,10 @@ async def _execute_debug_steps(task_id: int, steps: List[Dict[str, Any]], reques
             keyword = step.get("keyword", "")
             params = step.get("params", {})
 
-            # 清理 CSS 选择器中的动态类名 / Clean dynamic classes from CSS selectors
+            # 清理 CSS 选择器中的动态类名 + 修复畸形 XPath / Clean dynamic classes + fix malformed XPath
             if "element" in params and params["element"]:
                 params = params.copy()
-                params["element"] = _simplify_css_selector(params["element"])
+                params["element"] = _fix_xpath_selector(_simplify_css_selector(params["element"]))
 
             # 为 solve_captcha 注入 engine 和 task_id（支持人工介入）
             if keyword == "solve_captcha":
@@ -326,30 +302,71 @@ async def _execute_debug_steps(task_id: int, steps: List[Dict[str, Any]], reques
                 duration = time.time() - start_time
                 success = result.get("success", False)
                 message = result.get("message", "")
-                _debug_tasks[task_id]["results"].append({
+
+                step_result = {
                     "step_index": i,
                     "keyword": keyword,
                     "success": success,
                     "message": message,
-                    "duration": round(duration, 2)
-                })
+                    "duration": round(duration, 2),
+                    "screenshot": "",
+                    "page_url": "",
+                }
+
+                # 步骤失败时：截图 + 记录当前 URL，帮助定位问题
+                if not success:
+                    try:
+                        current_url = driver.page.url if driver and driver.page else ""
+                        step_result["page_url"] = current_url
+                        if driver and driver.page:
+                            screenshot_bytes = await driver.page.screenshot()
+                            step_result["screenshot"] = base64.b64encode(screenshot_bytes).decode("utf-8")
+                        error_detail = f"步骤 {i+1} 执行失败: {message}"
+                        if current_url:
+                            error_detail += f" (当前页面: {current_url})"
+                        _debug_tasks[task_id]["error"] = error_detail
+                    except Exception as screenshot_err:
+                        logger.warning(f"截图失败: {screenshot_err}")
+                        _debug_tasks[task_id]["error"] = f"步骤 {i+1} 执行失败: {message}"
+
+                _debug_tasks[task_id]["results"].append(step_result)
+
                 # 步骤失败，停止执行
                 if not success:
                     _debug_tasks[task_id]["status"] = "failed"
-                    _debug_tasks[task_id]["error"] = f"步骤 {i+1} 执行失败: {message}"
                     break
             except Exception as e:
                 duration = time.time() - start_time
-                _debug_tasks[task_id]["results"].append({
+                error_message = str(e)
+
+                step_result = {
                     "step_index": i,
                     "keyword": keyword,
                     "success": False,
-                    "message": str(e),
-                    "duration": round(duration, 2)
-                })
+                    "message": error_message,
+                    "duration": round(duration, 2),
+                    "screenshot": "",
+                    "page_url": "",
+                }
+
+                # 异常时：截图 + 记录当前 URL
+                try:
+                    current_url = driver.page.url if driver and driver.page else ""
+                    step_result["page_url"] = current_url
+                    if driver and driver.page:
+                        screenshot_bytes = await driver.page.screenshot()
+                        step_result["screenshot"] = base64.b64encode(screenshot_bytes).decode("utf-8")
+                    error_detail = f"步骤 {i+1} 执行失败: {error_message}"
+                    if current_url:
+                        error_detail += f" (当前页面: {current_url})"
+                except Exception as screenshot_err:
+                    logger.warning(f"截图失败: {screenshot_err}")
+                    error_detail = f"步骤 {i+1} 执行失败: {error_message}"
+
+                _debug_tasks[task_id]["results"].append(step_result)
                 # 步骤失败，停止执行
                 _debug_tasks[task_id]["status"] = "failed"
-                _debug_tasks[task_id]["error"] = f"步骤 {i+1} 执行失败: {str(e)}"
+                _debug_tasks[task_id]["error"] = error_detail
                 break
 
         if _debug_tasks[task_id]["status"] == "running":

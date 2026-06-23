@@ -340,12 +340,16 @@ class ExecService:
                     db.rollback()
 
             # 创建执行引擎
+            # 注意：前端传来的 timeout 是秒，ExecutionEngine 需要毫秒
             params = task["params"]
+            engine_timeout = params.get("timeout", 30)
+            if engine_timeout < 1000:
+                engine_timeout = engine_timeout * 1000  # 秒转毫秒
             engine = ExecutionEngine(
                 platform=params.get("platform", "web"),
                 browser_type=params.get("browser_type", "chromium"),
                 headless=params.get("headless", settings.HEADLESS),
-                timeout=params.get("timeout", settings.BROWSER_TIMEOUT),
+                timeout=engine_timeout,
             )
 
             # 在线程中创建新的事件循环运行异步引擎

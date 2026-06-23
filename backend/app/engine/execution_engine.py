@@ -83,12 +83,14 @@ class ExecutionEngine:
             screenshot_base64 = base64.b64encode(f.read()).decode("utf-8")
 
         # 存储待处理的人工输入请求
+        # 注意：记录当前事件循环，以便 submit_manual_input 跨线程安全唤醒
         self._pending_manual_input = {
             "screenshot_base64": screenshot_base64,
             "captcha_selector": captcha_selector,
             "input_selector": input_selector,
             "task_id": task_id,
             "event": asyncio.Event(),
+            "loop": asyncio.get_running_loop(),
             "result": None,
         }
 
@@ -96,13 +98,13 @@ class ExecutionEngine:
         self._pause_event.clear()
 
         # 通知前端（如果有回调）
+        # 注意：task_id 不传给回调，因为回调闭包已捕获 task_id
         if self._manual_input_callback:
             try:
                 await self._manual_input_callback(
                     screenshot_base64=screenshot_base64,
                     captcha_selector=captcha_selector,
                     input_selector=input_selector,
-                    task_id=task_id,
                 )
             except Exception as e:
                 logger.warning(f"[ExecutionEngine] 通知前端失败: {e}")
@@ -124,16 +126,31 @@ class ExecutionEngine:
     def submit_manual_input(self, captcha_text: str) -> bool:
         """@Function: 提交人工输入的验证码 / Submit manually entered captcha
 
+        注意：此方法可能从不同的线程/事件循环调用（如 FastAPI 主线程），
+        需要使用 call_soon_threadsafe 安全唤醒等待中的协程。
+
         Args:
             captcha_text: 用户输入的验证码文本
 
         Returns:
             是否提交成功
         """
-        if self._pending_manual_input and not self._pending_manual_input["event"].is_set():
+        if self._pending_manual_input:
             self._pending_manual_input["result"] = captcha_text
-            self._pending_manual_input["event"].set()
-            return True
+            event = self._pending_manual_input["event"]
+            loop = self._pending_manual_input.get("loop")
+
+            if not event.is_set():
+                # 跨线程安全唤醒：在正确的事件循环中设置 event
+                if loop and loop.is_running():
+                    loop.call_soon_threadsafe(event.set)
+                else:
+                    event.set()
+                logger.info(f"[ExecutionEngine] 验证码已提交: {captcha_text}")
+                return True
+            else:
+                logger.info(f"[ExecutionEngine] 验证码已更新: {captcha_text}")
+                return True
         return False
 
     @property

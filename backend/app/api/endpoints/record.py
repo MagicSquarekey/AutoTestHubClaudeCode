@@ -89,8 +89,23 @@ def _simplify_css_selector(css: str) -> str:
     parts = css.split(' > ')
     if len(parts) > 3:
         return ' > '.join(parts[-3:])
-    
+
     return css
+
+
+def _fix_xpath_selector(selector: str) -> str:
+    """@Function: 修复畸形 XPath 选择器 / Fix malformed XPath selectors
+
+    修复录制时生成的畸形 XPath，例如：
+    - //[@id="app"]/div → //*[@id="app"]/div
+    - //[@id="app"]/div/button → //*[@id="app"]/div/button
+    """
+    if not selector:
+        return selector
+    # 修复 //[@id="..."] 开头的畸形 XPath（缺少元素名或通配符）
+    if re.match(r'^//\[@', selector):
+        selector = '//*' + selector[2:]
+    return selector
 
 
 # ==================== 请求模型 / Request Models ====================
@@ -430,7 +445,9 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
         # 优先使用语义化选择器（更稳定），而非复杂 CSS 路径
         element_value = ""
         if element_locators:
-            for preferred_key in ["placeholder", "name", "id", "data-testid", "type", "aria-label", "xpath", "css"]:
+            # 注意：css 排在 type 之前，因为 CSS 选择器包含正确的标签名（如 button.xxx），
+            # 而 type 单独使用时无法区分 input 和 button 元素
+            for preferred_key in ["placeholder", "name", "id", "data-testid", "aria-label", "xpath", "css", "type"]:
                 loc_val = element_locators.get(preferred_key, "")
                 if not loc_val:
                     continue
@@ -447,14 +464,19 @@ async def convert_to_case(task_id: int, convert: ConvertRequest, db: Session = D
                 elif preferred_key == "data-testid":
                     element_value = f'[data-testid="{loc_val}"]'
                     break
-                elif preferred_key == "type":
-                    element_value = f'input[type="{loc_val}"]'
-                    break
                 elif preferred_key == "aria-label":
                     element_value = f'[aria-label="{loc_val}"]'
                     break
                 elif preferred_key == "xpath":
-                    element_value = loc_val
+                    element_value = _fix_xpath_selector(loc_val)
+                    break
+                elif preferred_key == "css":
+                    element_value = _simplify_css_selector(loc_val)
+                    break
+                elif preferred_key == "type":
+                    # 使用实际标签名，而非硬编码 input
+                    tag = element_locators.get("tag", "input")
+                    element_value = f'{tag}[type="{loc_val}"]'
                     break
                 elif preferred_key == "css":
                     element_value = _simplify_css_selector(loc_val)

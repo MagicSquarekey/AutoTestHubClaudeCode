@@ -145,7 +145,7 @@ EVENT_LISTENER_SCRIPT = """
             let selector = current.tagName.toLowerCase();
 
             if (current.id) {
-                selector = `[@id="${current.id}"]`;
+                selector = `${current.tagName.toLowerCase()}[@id="${current.id}"]`;
                 parts.unshift(selector);
                 break;
             }
