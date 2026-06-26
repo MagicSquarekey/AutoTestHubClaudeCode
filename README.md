@@ -1,4 +1,4 @@
-# AutoTest Hub 单人落地版
+# AutoTest Hub
 
 🤖 一款 Windows 开箱即用的单人专属自动化测试工具
 
