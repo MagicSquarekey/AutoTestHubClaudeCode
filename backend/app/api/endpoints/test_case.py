@@ -39,6 +39,18 @@ class CaseUpdate(BaseModel):
     teardown_steps: Optional[str] = None
     platform: Optional[str] = None
     status: Optional[int] = None
+    sort_order: Optional[int] = None
+
+
+class CaseSortItem(BaseModel):
+    """用例排序项"""
+    id: int
+    sort_order: int
+
+
+class CaseSortRequest(BaseModel):
+    """用例排序请求"""
+    cases: List[CaseSortItem]
 
 
 class CaseResponse(BaseModel):
@@ -197,3 +209,37 @@ async def get_tag_list(db: Session = Depends(get_db)):
     service = CaseService(db)
     tags = service.get_tag_list()
     return {"code": 0, "data": tags}
+
+
+@router.post("/sort", summary="批量更新用例排序")
+async def sort_cases(sort_data: CaseSortRequest, db: Session = Depends(get_db)):
+    """@Function: 批量更新用例的排序顺序"""
+    service = CaseService(db)
+    try:
+        count = service.update_case_sort_order(sort_data.cases)
+        return {"code": 0, "data": {"updated_count": count}, "message": f"成功更新{count}条用例的排序"}
+    except Exception as e:
+        return {"code": 1, "message": f"排序更新失败: {str(e)}"}
+
+
+@router.get("/sorted/list", summary="获取排序后的用例列表")
+async def get_sorted_case_list(
+    module: Optional[str] = None,
+    tag: Optional[str] = None,
+    priority: Optional[str] = None,
+    platform: Optional[str] = None,
+    status: Optional[int] = None,
+    keyword: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """@Function: 获取按 sort_order 排序的用例列表（不分页）"""
+    service = CaseService(db)
+    cases = service.get_sorted_case_list(
+        module=module,
+        tag=tag,
+        priority=priority,
+        platform=platform,
+        status=status,
+        keyword=keyword,
+    )
+    return {"code": 0, "data": cases}

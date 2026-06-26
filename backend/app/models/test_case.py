@@ -25,6 +25,7 @@ class TestCase(Base):
     version = Column(Integer, default=1, comment="版本号 / Version number")
     status = Column(Integer, default=1, comment="状态：1 启用 0 禁用 / Status: 1=enabled 0=disabled")
     platform = Column(String(50), default="web", comment="适用平台：web/android/ios/miniapp / Target platform")
+    sort_order = Column(Integer, default=0, comment="排序顺序 / Sort order")
     create_time = Column(DateTime, default=datetime.now, comment="创建时间 / Create time")
     update_time = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间 / Update time")
 
@@ -43,6 +44,7 @@ class TestCase(Base):
             "version": self.version,
             "status": self.status,
             "platform": self.platform,
+            "sort_order": self.sort_order,
             "create_time": self.create_time.strftime("%Y-%m-%d %H:%M:%S") if self.create_time else None,
             "update_time": self.update_time.strftime("%Y-%m-%d %H:%M:%S") if self.update_time else None,
         }

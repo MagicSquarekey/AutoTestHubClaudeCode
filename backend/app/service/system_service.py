@@ -297,3 +297,59 @@ class SystemService:
             "disk_total_gb": round(psutil.disk_usage("/").total / 1024 / 1024 / 1024, 2),
             "disk_free_gb": round(psutil.disk_usage("/").free / 1024 / 1024 / 1024, 2),
         }
+
+    def get_menu_config(self) -> Dict[str, Any]:
+        """@Function: 获取菜单配置
+
+        Returns:
+            菜单配置
+        """
+        config = self.db.query(SysConfig).filter(SysConfig.config_key == "menu_config").first()
+        if config:
+            try:
+                return json.loads(config.config_value)
+            except json.JSONDecodeError:
+                pass
+
+        # 默认菜单配置
+        default_config = {
+            "menus": [
+                {"path": "", "name": "Dashboard", "title": "仪表盘", "icon": "Odometer", "visible": True, "sort_order": 0},
+                {"path": "case", "name": "TestCase", "title": "用例管理", "icon": "Document", "visible": True, "sort_order": 1},
+                {"path": "module", "name": "Module", "title": "模块管理", "icon": "Folder", "visible": True, "sort_order": 2},
+                {"path": "tag", "name": "Tag", "title": "标签管理", "icon": "PriceTag", "visible": True, "sort_order": 3},
+                {"path": "element", "name": "Element", "title": "元素管理", "icon": "Pointer", "visible": True, "sort_order": 4},
+                {"path": "execution", "name": "Execution", "title": "执行控制", "icon": "VideoPlay", "visible": True, "sort_order": 5},
+                {"path": "report", "name": "Report", "title": "测试报告", "icon": "DataAnalysis", "visible": True, "sort_order": 6},
+                {"path": "device", "name": "Device", "title": "设备管理", "icon": "Monitor", "visible": True, "sort_order": 7},
+                {"path": "scheduler", "name": "Scheduler", "title": "任务调度", "icon": "Timer", "visible": True, "sort_order": 8},
+                {"path": "settings", "name": "Settings", "title": "系统设置", "icon": "Setting", "visible": True, "sort_order": 9},
+                {"path": "menu-config", "name": "MenuConfig", "title": "菜单配置", "icon": "Menu", "visible": True, "sort_order": 10},
+                {"path": "record", "name": "Record", "title": "页面录制", "icon": "VideoCamera", "visible": True, "sort_order": 11},
+            ]
+        }
+        return default_config
+
+    def update_menu_config(self, config_data: Dict[str, Any]):
+        """@Function: 更新菜单配置
+
+        Args:
+            config_data: 菜单配置数据
+        """
+        config = self.db.query(SysConfig).filter(SysConfig.config_key == "menu_config").first()
+        config_value = json.dumps(config_data, ensure_ascii=False)
+
+        if config:
+            config.config_value = config_value
+            config.update_time = datetime.now()
+        else:
+            config = SysConfig(
+                config_key="menu_config",
+                config_value=config_value,
+                config_type="json",
+                description="菜单显示配置",
+            )
+            self.db.add(config)
+
+        self.db.commit()
+        logger.info("更新菜单配置")

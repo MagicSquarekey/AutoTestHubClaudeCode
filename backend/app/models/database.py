@@ -60,6 +60,9 @@ def init_db():
     # 数据迁移：为录制任务表添加新字段 / Data migration: add new fields to record_task
     _migrate_record_task_fields()
 
+    # 数据迁移：为用例表添加排序字段 / Data migration: add sort_order field to test_case
+    _migrate_case_sort_order()
+
 
 def _migrate_modules_and_tags():
     """@Function: 迁移现有用例中的模块和标签到新表 / Migrate existing modules and tags to new tables"""
@@ -118,3 +121,22 @@ def _migrate_record_task_fields():
             conn.commit()
     except Exception as e:
         print(f"录制任务表迁移失败 / Record task migration failed: {e}")
+
+
+def _migrate_case_sort_order():
+    """@Function: 为用例表添加排序字段 / Add sort_order field to test_case table"""
+    from sqlalchemy import text
+
+    try:
+        with engine.connect() as conn:
+            # 检查 sort_order 列是否存在
+            result = conn.execute(text("PRAGMA table_info(test_case)"))
+            columns = [row[1] for row in result.fetchall()]
+
+            if 'sort_order' not in columns:
+                conn.execute(text("ALTER TABLE test_case ADD COLUMN sort_order INTEGER DEFAULT 0"))
+                print("添加 test_case.sort_order 列")
+
+            conn.commit()
+    except Exception as e:
+        print(f"用例表迁移失败 / Test case migration failed: {e}")

@@ -171,6 +171,7 @@ class RecordingManager:
         """@Function: 录制任务协程 / Recording task coroutine"""
         logger.info(f"录制任务 {task_id} 协程开始，准备启动浏览器")
         engine = RecordingEngine(browser_type=browser_type, headless=False)
+        browser_closed_by_user = False  # 标记是否用户手动关闭了浏览器
 
         try:
             # 启动浏览器
@@ -223,6 +224,11 @@ class RecordingManager:
             while engine.is_recording and engine.is_alive:
                 await asyncio.sleep(1)
 
+            # 检测到浏览器被关闭（非正常停止录制）
+            if not engine.is_alive and engine.is_recording:
+                browser_closed_by_user = True
+                logger.info(f"录制任务 {task_id} 检测到浏览器已关闭，自动停止录制")
+
         except Exception as e:
             logger.error(f"录制任务 {task_id} 异常: {e}")
             raise
@@ -237,6 +243,19 @@ class RecordingManager:
             # 从引擎字典中移除
             self._engines.pop(task_id, None)
             self._starting_tasks.discard(task_id)
+
+            # 如果是用户手动关闭浏览器，自动更新任务状态为 completed
+            if browser_closed_by_user:
+                db = SessionLocal()
+                try:
+                    service = RecordService(db)
+                    service.update_task_status(task_id, "completed")
+                    logger.info(f"录制任务 {task_id} 已自动更新状态为 completed")
+                except Exception as e:
+                    logger.error(f"更新任务状态失败: {e}")
+                finally:
+                    db.close()
+
             logger.info(f"录制任务 {task_id} 资源已清理")
 
     async def _free_recording_task(self, task_id: int, browser_type: str):
@@ -246,6 +265,7 @@ class RecordingManager:
         """
         logger.info(f"自由录制任务 {task_id} 协程开始，准备启动浏览器")
         engine = RecordingEngine(browser_type=browser_type, headless=False)
+        browser_closed_by_user = False  # 标记是否用户手动关闭了浏览器
 
         try:
             # 启动浏览器
@@ -292,6 +312,11 @@ class RecordingManager:
             while task_id in self._engines and engine.is_alive:
                 await asyncio.sleep(1)
 
+            # 检测到浏览器被关闭
+            if not engine.is_alive:
+                browser_closed_by_user = True
+                logger.info(f"自由录制任务 {task_id} 检测到浏览器已关闭")
+
         except Exception as e:
             logger.error(f"自由录制任务 {task_id} 异常: {e}")
             # 发生错误时更新任务状态
@@ -315,9 +340,25 @@ class RecordingManager:
             # 从引擎字典中移除
             self._engines.pop(task_id, None)
             self._starting_tasks.discard(task_id)
+
+            # 如果是用户手动关闭浏览器，自动更新任务状态为 completed
+            if browser_closed_by_user:
+                db = SessionLocal()
+                try:
+                    service = RecordService(db)
+                    # 如果是录制中状态，更新为 completed；否则保持原状态
+                    task = service.get_task_by_id(task_id)
+                    if task and task.get("status") == "recording":
+                        service.update_task_status(task_id, "completed")
+                        logger.info(f"自由录制任务 {task_id} 已自动更新状态为 completed")
+                    else:
+                        logger.info(f"自由录制任务 {task_id} 浏览器已关闭，当前状态: {task.get('status') if task else 'unknown'}")
+                except Exception as e:
+                    logger.error(f"更新任务状态失败: {e}")
+                finally:
+                    db.close()
+
             logger.info(f"自由录制任务 {task_id} 资源已清理")
-            # 确保清除启动标记 / Ensure starting flag is cleared
-            self._starting_tasks.discard(task_id)
 
     def stop_recording(self, task_id: int) -> List[Dict[str, Any]]:
         """@Function: 停止录制 / Stop recording

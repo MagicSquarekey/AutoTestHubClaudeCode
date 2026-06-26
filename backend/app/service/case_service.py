@@ -368,3 +368,75 @@ class CaseService:
                     if tag:
                         tags.add(tag)
         return sorted(list(tags))
+
+    def update_case_sort_order(self, sort_items: List[Dict[str, int]]) -> int:
+        """@Function: 批量更新用例排序顺序 / Batch update case sort order
+
+        Args:
+            sort_items: 排序项列表 [{"id": 1, "sort_order": 0}, ...]
+
+        Returns:
+            更新的数量 / Number of updated cases
+        """
+        updated_count = 0
+        for item in sort_items:
+            case_id = item.get("id") if isinstance(item, dict) else item.id
+            sort_order = item.get("sort_order") if isinstance(item, dict) else item.sort_order
+
+            case = self.db.query(TestCase).filter(TestCase.id == case_id).first()
+            if case:
+                case.sort_order = sort_order
+                case.update_time = datetime.now()
+                updated_count += 1
+
+        self.db.commit()
+        logger.info(f"更新用例排序成功 / Case sort order updated: {updated_count} cases")
+        return updated_count
+
+    def get_sorted_case_list(
+        self,
+        module: Optional[str] = None,
+        tag: Optional[str] = None,
+        priority: Optional[str] = None,
+        platform: Optional[str] = None,
+        status: Optional[int] = None,
+        keyword: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """@Function: 获取按 sort_order 排序的用例列表 / Get case list sorted by sort_order
+
+        Args:
+            module: 模块筛选 / Module filter
+            tag: 标签筛选 / Tag filter
+            priority: 优先级筛选 / Priority filter
+            platform: 平台筛选 / Platform filter
+            status: 状态筛选 / Status filter
+            keyword: 关键词搜索 / Keyword search
+
+        Returns:
+            用例列表 / Case list
+        """
+        query = self.db.query(TestCase)
+
+        # 应用筛选条件 / Apply filters
+        if module:
+            query = query.filter(TestCase.module == module)
+        if tag:
+            query = query.filter(TestCase.tags.contains(tag))
+        if priority:
+            query = query.filter(TestCase.priority == priority)
+        if platform:
+            query = query.filter(TestCase.platform == platform)
+        if status is not None:
+            query = query.filter(TestCase.status == status)
+        if keyword:
+            query = query.filter(
+                or_(
+                    TestCase.case_name.contains(keyword),
+                    TestCase.description.contains(keyword),
+                )
+            )
+
+        # 按 sort_order 升序排序，然后按 id 升序排序
+        cases = query.order_by(TestCase.sort_order.asc(), TestCase.id.asc()).all()
+
+        return [case.to_dict() for case in cases]

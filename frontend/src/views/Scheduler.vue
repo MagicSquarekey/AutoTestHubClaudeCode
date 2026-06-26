@@ -22,7 +22,7 @@
         <el-table-column prop="platform" label="平台" width="80" />
         <el-table-column label="用例数" width="80">
           <template #default="{ row }">
-            {{ row.case_ids?.length || 0 }}
+            <el-tag size="small" type="primary">{{ row.case_ids?.length || 0 }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="description" label="描述" />
@@ -78,7 +78,7 @@
     </el-card>
 
     <!-- 用例集编辑对话框 -->
-    <el-dialog v-model="suiteDialogVisible" :title="isEditSuite ? '编辑用例集' : '新建用例集'" width="700px">
+    <el-dialog v-model="suiteDialogVisible" :title="isEditSuite ? '编辑用例集' : '新建用例集'" width="800px">
       <el-form :model="suiteForm" label-width="100px">
         <el-form-item label="名称" required>
           <el-input v-model="suiteForm.suite_name" placeholder="输入用例集名称" />
@@ -100,13 +100,82 @@
         <el-form-item label="描述">
           <el-input v-model="suiteForm.description" type="textarea" :rows="2" />
         </el-form-item>
+
+        <!-- 用例选择区域 -->
+        <el-divider content-position="left">选择用例（按执行顺序排列）</el-divider>
+        <el-form-item label="选择用例">
+          <div class="case-selector">
+            <div class="case-selector-header">
+              <el-select
+                v-model="selectedCaseId"
+                placeholder="添加用例到列表"
+                filterable
+                style="width: 100%"
+                @change="addCaseToSuite"
+              >
+                <el-option
+                  v-for="c in availableCases"
+                  :key="c.id"
+                  :label="`${c.case_name} (${c.module || '无模块'})`"
+                  :value="c.id"
+                />
+              </el-select>
+            </div>
+            <div class="case-list" v-if="selectedCases.length > 0">
+              <div
+                v-for="(c, index) in selectedCases"
+                :key="c.id"
+                class="case-item"
+              >
+                <div class="case-item-left">
+                  <el-icon class="drag-handle"><Rank /></el-icon>
+                  <el-tag size="small" type="primary">{{ index + 1 }}</el-tag>
+                  <span class="case-name">{{ c.case_name }}</span>
+                  <el-tag v-if="c.module" size="small" type="info">{{ c.module }}</el-tag>
+                </div>
+                <div class="case-item-right">
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    @click="moveCaseUp(index)"
+                    :disabled="index === 0"
+                  >
+                    <el-icon><Top /></el-icon>
+                  </el-button>
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    @click="moveCaseDown(index)"
+                    :disabled="index === selectedCases.length - 1"
+                  >
+                    <el-icon><Bottom /></el-icon>
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    link
+                    size="small"
+                    @click="removeCaseFromSuite(index)"
+                  >
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+            <div class="case-empty" v-else>
+              <el-empty description="暂未选择用例" :image-size="60" />
+            </div>
+          </div>
+        </el-form-item>
+
         <el-divider content-position="left">前置步骤（套件执行前）</el-divider>
         <el-form-item label="前置步骤">
           <el-input
             v-model="suiteForm.setup_steps"
             type="textarea"
             :rows="3"
-            placeholder='[{"keyword": "login", "params": {"account": "admin"}}, {"keyword": "navigate_to_project", "params": {"project_name": "沈阳招商银行大厦"}}]'
+            placeholder='[{"keyword": "open_url", "params": {"url": "https://example.com"}}]'
           />
           <div class="step-hint">JSON 格式，每个步骤包含 keyword 和 params</div>
         </el-form-item>
@@ -169,13 +238,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
-import { schedulerApi, execApi } from '@/api'
+import { Plus, Rank, Top, Bottom, Delete } from '@element-plus/icons-vue'
+import { schedulerApi, execApi, caseApi } from '@/api'
 
 const suites = ref([])
 const tasks = ref([])
+const allCases = ref([]) // 所有用例
 
 const suiteDialogVisible = ref(false)
 const isEditSuite = ref(false)
@@ -184,8 +254,19 @@ const suiteForm = ref({
   suite_type: 'regression',
   platform: 'web',
   description: '',
+  case_ids: [],
   setup_steps: '[]',
   teardown_steps: '[]',
+})
+
+// 已选择的用例列表（用于排序）
+const selectedCases = ref([])
+const selectedCaseId = ref(null) // 当前选择的用例ID
+
+// 可用的用例（排除已选择的）
+const availableCases = computed(() => {
+  const selectedIds = selectedCases.value.map(c => c.id)
+  return allCases.value.filter(c => !selectedIds.includes(c.id))
 })
 
 const taskDialogVisible = ref(false)
@@ -201,6 +282,7 @@ const taskForm = ref({
 onMounted(() => {
   loadSuites()
   loadTasks()
+  loadAllCases()
 })
 
 const loadSuites = async () => {
@@ -219,6 +301,15 @@ const loadTasks = async () => {
   }
 }
 
+const loadAllCases = async () => {
+  try {
+    const result = await caseApi.getList({ page_size: 1000 })
+    allCases.value = result?.list || []
+  } catch (error) {
+    console.error('加载用例列表失败:', error)
+  }
+}
+
 const getSuiteTypeTag = (type) => {
   const map = { smoke: 'danger', regression: 'warning', custom: 'info' }
   return map[type] || ''
@@ -231,20 +322,65 @@ const createSuite = () => {
     suite_type: 'regression',
     platform: 'web',
     description: '',
+    case_ids: [],
     setup_steps: '[]',
     teardown_steps: '[]',
   }
+  selectedCases.value = []
+  selectedCaseId.value = null
   suiteDialogVisible.value = true
 }
 
-const editSuite = (row) => {
+const editSuite = async (row) => {
   isEditSuite.value = true
   suiteForm.value = { ...row }
+
+  // 加载已选择的用例
+  const caseIds = row.case_ids || []
+  selectedCases.value = caseIds
+    .map(id => allCases.value.find(c => c.id === id))
+    .filter(Boolean)
+
+  selectedCaseId.value = null
   suiteDialogVisible.value = true
+}
+
+// 添加用例到套件
+const addCaseToSuite = (caseId) => {
+  if (!caseId) return
+  const caseItem = allCases.value.find(c => c.id === caseId)
+  if (caseItem && !selectedCases.value.find(c => c.id === caseId)) {
+    selectedCases.value.push(caseItem)
+  }
+  selectedCaseId.value = null
+}
+
+// 从套件中移除用例
+const removeCaseFromSuite = (index) => {
+  selectedCases.value.splice(index, 1)
+}
+
+// 上移用例
+const moveCaseUp = (index) => {
+  if (index === 0) return
+  const temp = selectedCases.value[index]
+  selectedCases.value[index] = selectedCases.value[index - 1]
+  selectedCases.value[index - 1] = temp
+}
+
+// 下移用例
+const moveCaseDown = (index) => {
+  if (index === selectedCases.value.length - 1) return
+  const temp = selectedCases.value[index]
+  selectedCases.value[index] = selectedCases.value[index + 1]
+  selectedCases.value[index + 1] = temp
 }
 
 const saveSuite = async () => {
   try {
+    // 更新 case_ids
+    suiteForm.value.case_ids = selectedCases.value.map(c => c.id)
+
     if (isEditSuite.value) {
       await schedulerApi.updateSuite(suiteForm.value.id, suiteForm.value)
     } else {
@@ -361,5 +497,73 @@ const toggleTask = async (row) => {
 :deep(.el-divider__text) {
   font-size: 12px;
   color: #909399;
+}
+
+/* 用例选择器样式 */
+.case-selector {
+  width: 100%;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.case-selector-header {
+  padding: 12px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #dcdfe6;
+}
+
+.case-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.case-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #ebeef5;
+  transition: background-color 0.2s;
+}
+
+.case-item:hover {
+  background-color: #f5f7fa;
+}
+
+.case-item:last-child {
+  border-bottom: none;
+}
+
+.case-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #909399;
+  font-size: 16px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.case-name {
+  font-size: 14px;
+  color: #303133;
+}
+
+.case-item-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.case-empty {
+  padding: 20px;
 }
 </style>

@@ -64,6 +64,9 @@ export const caseApi = {
   },
   getModules: () => api.get('/case/modules/list'),
   getTags: () => api.get('/case/tags/list'),
+  // 用例排序相关 / Case sorting
+  getSortedList: (params) => api.get('/case/sorted/list', { params }),
+  sortCases: (data) => api.post('/case/sort', data),
 }
 
 // ==================== 元素管理 API / Element Management API ====================
@@ -153,6 +156,9 @@ export const systemApi = {
   restore: (path) => api.post('/system/restore', null, { params: { backup_path: path } }),
   clearCache: () => api.post('/system/clear-cache'),
   getSystemInfo: () => api.get('/system/system-info'),
+  // 菜单配置 / Menu config
+  getMenuConfig: () => api.get('/system/menu-config'),
+  updateMenuConfig: (data) => api.put('/system/menu-config', data),
 }
 
 // ==================== AI 辅助 API / AI Assistant API ====================

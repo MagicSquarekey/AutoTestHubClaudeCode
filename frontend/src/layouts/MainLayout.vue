@@ -72,9 +72,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Bell, User } from '@element-plus/icons-vue'
+import { systemApi } from '@/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -83,6 +84,8 @@ const route = useRoute()
 const isCollapse = ref(false)
 // 通知数量 / Notification count
 const notifyCount = ref(0)
+// 菜单配置 / Menu config
+const menuConfig = ref(null)
 
 const currentRoute = computed(() => route.path)
 const currentRouteMeta = computed(() => route.meta || {})
@@ -90,7 +93,47 @@ const currentRouteMeta = computed(() => route.meta || {})
 const menuRoutes = computed(() => {
   const mainRoute = router.options.routes.find(r => r.path === '/')
   if (!mainRoute || !mainRoute.children) return []
-  return mainRoute.children.filter(r => !r.meta?.hidden)
+
+  // 获取所有非隐藏的路由
+  let routes = mainRoute.children.filter(r => !r.meta?.hidden)
+
+  // 如果有菜单配置，应用排序和可见性
+  if (menuConfig.value?.menus) {
+    const configMenus = menuConfig.value.menus
+
+    // 根据配置过滤和排序路由
+    routes = routes
+      .filter(route => {
+        const config = configMenus.find(m => m.path === route.path)
+        // 如果有配置，使用配置的可见性；否则默认显示
+        return config ? config.visible : true
+      })
+      .sort((a, b) => {
+        const configA = configMenus.find(m => m.path === a.path)
+        const configB = configMenus.find(m => m.path === b.path)
+        const orderA = configA?.sort_order ?? 999
+        const orderB = configB?.sort_order ?? 999
+        return orderA - orderB
+      })
+  }
+
+  return routes
+})
+
+// 加载菜单配置
+const loadMenuConfig = async () => {
+  try {
+    const result = await systemApi.getMenuConfig()
+    if (result?.menus) {
+      menuConfig.value = result
+    }
+  } catch (error) {
+    console.error('加载菜单配置失败:', error)
+  }
+}
+
+onMounted(() => {
+  loadMenuConfig()
 })
 </script>
 

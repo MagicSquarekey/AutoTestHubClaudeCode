@@ -156,3 +156,20 @@ async def get_system_info(db: Session = Depends(get_db)):
     service = SystemService(db)
     info = service.get_system_info()
     return {"code": 0, "data": info}
+
+
+# 菜单配置接口
+@router.get("/menu-config", summary="获取菜单配置")
+async def get_menu_config(db: Session = Depends(get_db)):
+    """@Function: 获取菜单显示配置"""
+    service = SystemService(db)
+    config = service.get_menu_config()
+    return {"code": 0, "data": config}
+
+
+@router.put("/menu-config", summary="更新菜单配置")
+async def update_menu_config(config_data: dict, db: Session = Depends(get_db)):
+    """@Function: 更新菜单显示配置"""
+    service = SystemService(db)
+    service.update_menu_config(config_data)
+    return {"code": 0, "message": "菜单配置已更新"}

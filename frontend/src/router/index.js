@@ -77,6 +77,12 @@ const routes = [
         meta: { title: '系统设置', icon: 'Setting' },
       },
       {
+        path: 'menu-config',
+        name: 'MenuConfig',
+        component: () => import('@/views/MenuConfig.vue'),
+        meta: { title: '菜单配置', icon: 'Menu' },
+      },
+      {
         path: 'record',
         name: 'Record',
         component: () => import('@/views/Record.vue'),

@@ -1018,6 +1018,21 @@ async def _switch_tab(driver: WebDriver, params: Dict[str, Any], timeout: int = 
     tab_title = params.get("tab_title", "")
 
     pages = driver.page.context.pages
+
+    # 如果只有一个标签页，等待新标签页打开（可能是前一个 click 操作触发的）
+    if len(pages) < 2:
+        logger.info("[switch_tab] 当前只有一个标签页，等待新标签页打开...")
+        try:
+            # 等待新标签页打开，最多等待 timeout 秒
+            new_page = await driver.page.context.wait_for_event("page", timeout=timeout * 1000)
+            # 等待新页面加载
+            await new_page.wait_for_load_state("domcontentloaded", timeout=timeout * 1000)
+            await asyncio.sleep(0.5)
+            pages = driver.page.context.pages
+            logger.info(f"[switch_tab] 检测到新标签页打开，当前共 {len(pages)} 个标签页")
+        except Exception as e:
+            raise RuntimeError(f"当前只有一个标签页，且等待新标签页超时: {e}")
+
     if len(pages) < 2:
         raise RuntimeError("当前只有一个标签页，无法切换")
 

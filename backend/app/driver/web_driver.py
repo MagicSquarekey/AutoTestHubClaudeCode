@@ -46,7 +46,7 @@ class WebDriver:
         launcher = getattr(self._playwright, self._browser_type)
         self._browser = await launcher.launch(headless=self._headless)
         self._context = await self._browser.new_context(
-            viewport={"width": 1280, "height": 720},
+            viewport={"width": 1920, "height": 1080},
             ignore_https_errors=True,
         )
         self._context.set_default_timeout(self._timeout)
